@@ -139,6 +139,20 @@ example — say so plainly instead of inventing a convention.
   humans, and `global::`-qualified so it cannot be captured by a user namespace.
 - Prose in docs and comments is English; conversation with the maintainer may be Polish.
 
+## Before publishing to NuGet
+
+README images use **repository-relative** paths, because that is what renders on GitHub while the
+repository is private. nuget.org cannot resolve a relative path, so a package page would show broken
+images. As part of a release — on the release branch, not on main — rewrite them to absolute raw URLs,
+which requires the repository to be public:
+
+```bash
+sed -i 's|docs/images/|https://raw.githubusercontent.com/SideswipeN7/EApi/main/docs/images/|g' README.md
+```
+
+The adapter READMEs use `../../docs/images/` and need the same treatment. Doing it on main instead
+breaks the images for whoever is reading the repository.
+
 ## Things that will bite you
 
 - Adding a member to `IErrorApiMetadata` breaks every hand-written implementation, including

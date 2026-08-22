@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/SideswipeN7/EApi/main/docs/images/logo.svg" alt="ErrorApi" width="300">
+<img src="../../docs/images/logo.svg" alt="ErrorApi" width="300">
 
 # ErrorApi.ErrorOr
 
