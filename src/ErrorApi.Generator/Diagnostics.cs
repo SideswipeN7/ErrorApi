@@ -1,0 +1,71 @@
+using Microsoft.CodeAnalysis;
+
+namespace ErrorApi.Generator;
+
+internal static class Diagnostics
+{
+    private const string Category = "ErrorApi";
+
+    public static readonly DiagnosticDescriptor DuplicateErrorCode = new(
+        id: "EAPI001",
+        title: "Duplicate error code",
+        messageFormat: "Error code '{0}' is declared more than once; it is also declared on '{1}'",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description: "Error codes are the contract shipped to clients, so each one must resolve to a single status and title.");
+
+    public static readonly DiagnosticDescriptor NonLiteralRoute = new(
+        id: "EAPI002",
+        title: "Route pattern is not a literal",
+        messageFormat: "The route pattern is not a compile-time constant, so this endpoint cannot be documented; move the pattern into a const or add [ProducesError] to the handler",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "The generator matches endpoints by their route template, which has to be known at compile time.");
+
+    public static readonly DiagnosticDescriptor InvalidCatalogMember = new(
+        id: "EAPI003",
+        title: "Invalid error catalog member",
+        messageFormat: "'{0}' cannot be an error catalog entry: {1}",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description: "[Error] entries are implemented by the generator and must be declared as static partial members returning ErrorApi.Error.");
+
+    public static readonly DiagnosticDescriptor InvalidStatusCode = new(
+        id: "EAPI004",
+        title: "Invalid HTTP status code",
+        messageFormat: "Status code {0} on '{1}' is outside the 100-599 range",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description: "The declared status code is emitted verbatim into the OpenAPI document and the HTTP response.");
+
+    public static readonly DiagnosticDescriptor UnknownErrorCode = new(
+        id: "EAPI005",
+        title: "Unknown error code",
+        messageFormat: "[ProducesError(\"{0}\")] does not match any [Error] declaration in this compilation",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "Declared codes must exist in the catalog, otherwise the documented contract drifts from the code.");
+
+    public static readonly DiagnosticDescriptor NoErrorsDiscovered = new(
+        id: "EAPI006",
+        title: "Endpoint declares no errors",
+        messageFormat: "No error is reachable from the handler of '{0} {1}'; the endpoint will be documented with success responses only",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Info,
+        isEnabledByDefault: true,
+        description: "Endpoints that return Result<T> normally reach at least one catalog entry; none being found often means the handler was resolved through a boundary the generator cannot follow.");
+
+    public static readonly DiagnosticDescriptor UnresolvedHandler = new(
+        id: "EAPI007",
+        title: "Endpoint handler could not be resolved",
+        messageFormat: "The handler of '{0} {1}' could not be resolved to source, so its errors were not discovered; add [ProducesError] to declare them explicitly",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "The generator follows the handler delegate into source; handlers coming from another assembly or from a runtime-built delegate are opaque to it.");
+}

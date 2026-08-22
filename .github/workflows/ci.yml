@@ -1,0 +1,86 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore ErrorApi.slnx
+
+      # Warnings matter here: the sample builds with the trim and AOT analyzers on, so a regression
+      # in AOT compatibility fails the build rather than the README.
+      - name: Build
+        run: dotnet build ErrorApi.slnx --no-restore -c Release -warnaserror
+
+      - name: Test
+        run: dotnet test ErrorApi.slnx --no-build -c Release
+
+      - name: Upload received snapshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: received-snapshots
+          path: tests/**/Snapshots/*.received.txt
+          if-no-files-found: ignore
+
+      - name: Pack
+        run: dotnet pack ErrorApi.slnx --no-build -c Release -o artifacts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: artifacts/*.nupkg
+
+  # Each adapter is pinned to one version of its library, but has to keep working across the range
+  # people actually have installed. The suites take a version override so this stays one job per pair.
+  adapters:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - adapter: ErrorOr
+            property: ErrorOrTestVersion
+            version: '1.10.0'
+          - adapter: ErrorOr
+            property: ErrorOrTestVersion
+            version: '2.0.1'
+          - adapter: ErrorOr
+            property: ErrorOrTestVersion
+            version: '2.1.1'
+          - adapter: OneOf
+            property: OneOfTestVersion
+            version: '3.0.263'
+          - adapter: OneOf
+            property: OneOfTestVersion
+            version: '3.0.271'
+          - adapter: LanguageExt
+            property: LanguageExtTestVersion
+            version: '4.4.0'
+          - adapter: LanguageExt
+            property: LanguageExtTestVersion
+            version: '4.4.9'
+    name: ${{ matrix.adapter }} ${{ matrix.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Test
+        run: >
+          dotnet test tests/ErrorApi.${{ matrix.adapter }}.Tests
+          -c Release
+          -p:${{ matrix.property }}=${{ matrix.version }}

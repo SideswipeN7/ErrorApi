@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>ErrorApi.Generator.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- The harness compiles hand-written snippets; the generator must not also run on this project. -->
+    <NoWarn>$(NoWarn);EAPI002;EAPI006;EAPI007</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- No result library is referenced here on purpose: this suite must pass on the core alone.
+         Each adapter is proved in its own project, against its own pinned version. -->
+    <ProjectReference Include="..\ErrorApi.TestKit\ErrorApi.TestKit.csproj" />
+    <ProjectReference Include="..\..\src\ErrorApi.Generator\ErrorApi.Generator.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Snapshots\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

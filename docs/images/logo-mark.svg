@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-label="ErrorApi">
+  <title>ErrorApi</title>
+  <style>
+    :root { --tile: #0a6a6c; --alert: #d94436; --glyph: #ffffff; }
+    @media (prefers-color-scheme: dark) {
+      :root { --tile: #0d7c7e; --alert: #ef5a49; --glyph: #ffffff; }
+    }
+  </style>
+
+  <!-- The tile carries its own ground, so the mark holds on any page colour. -->
+  <rect width="96" height="96" rx="22" fill="var(--tile)" />
+
+  <!-- The red disc reads as the error state; the pi sits inside it because "Api" already ends in one. -->
+  <circle cx="48" cy="48" r="30" fill="var(--alert)" />
+
+  <g fill="var(--glyph)">
+    <rect x="31" y="34" width="34" height="7" rx="3.5" />
+    <rect x="36" y="34" width="7" height="28" rx="3.5" />
+    <rect x="53" y="34" width="7" height="28" rx="3.5" />
+  </g>
+</svg>

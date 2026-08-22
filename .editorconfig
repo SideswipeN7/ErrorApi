@@ -1,0 +1,26 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+
+[*.{json,yml,yaml,ts,js,md}]
+indent_size = 2
+
+[*.{csproj,props,targets,slnx}]
+indent_size = 2
+
+[*.cs]
+csharp_style_namespace_declarations = file_scoped:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+dotnet_sort_system_directives_first = true
+
+# The generator reports these on the consuming project; tune them per repository.
+dotnet_diagnostic.EAPI002.severity = warning
+dotnet_diagnostic.EAPI005.severity = warning
+dotnet_diagnostic.EAPI006.severity = suggestion
+dotnet_diagnostic.EAPI007.severity = warning

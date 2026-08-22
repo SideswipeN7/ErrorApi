@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 96" width="400" height="96" role="img" aria-label="ErrorApi">
+  <title>ErrorApi</title>
+  <style>
+    :root { --tile: #0a6a6c; --alert: #d0402f; --disc: #d94436; --glyph: #ffffff; --teal: #0a6a6c; }
+    @media (prefers-color-scheme: dark) {
+      :root { --tile: #0d7c7e; --alert: #f2705f; --disc: #ef5a49; --glyph: #ffffff; --teal: #45c3b8; }
+    }
+    .word { font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  </style>
+
+  <rect width="96" height="96" rx="22" fill="var(--tile)" />
+  <circle cx="48" cy="48" r="30" fill="var(--disc)" />
+
+  <g fill="var(--glyph)">
+    <rect x="31" y="34" width="34" height="7" rx="3.5" />
+    <rect x="36" y="34" width="7" height="28" rx="3.5" />
+    <rect x="53" y="34" width="7" height="28" rx="3.5" />
+  </g>
+
+  <!-- Two colours, split exactly on the pun: the failure half is red, and "Api" keeps the teal of the
+       tile with its last two letters replaced by the glyph they already spell. Neither colour depends on
+       the page being light or dark, so the lockup drops onto any ground. -->
+  <text class="word" x="122" y="63" font-size="46" font-weight="600" letter-spacing="-1">
+    <tspan fill="var(--alert)">Error</tspan><tspan fill="var(--teal)">A</tspan><tspan fill="var(--teal)" font-size="52">π</tspan>
+  </text>
+</svg>
