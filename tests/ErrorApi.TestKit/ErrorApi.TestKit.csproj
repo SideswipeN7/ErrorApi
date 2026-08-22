@@ -5,6 +5,9 @@
     <RootNamespace>ErrorApi.Testing</RootNamespace>
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- Shared helpers, not a suite. Without this, `dotnet test` on the solution tries to run this
+         assembly and the test host fails because there is no runner in it. -->
+    <IsTestProject>false</IsTestProject>
   </PropertyGroup>
 
   <ItemGroup>
