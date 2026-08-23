@@ -18,5 +18,8 @@
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Sample.Api/Sample.Api.csproj" />
+    <Project Path="samples/Sample.ErrorOr.Api/Sample.ErrorOr.Api.csproj" />
+    <Project Path="samples/Sample.OneOf.Api/Sample.OneOf.Api.csproj" />
+    <Project Path="samples/Sample.LanguageExt.Api/Sample.LanguageExt.Api.csproj" />
   </Folder>
 </Solution>

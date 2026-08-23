@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/SideswipeN7/EApi/main/docs/images/logo.svg" alt="ErrorApi" width="340">
+<img src="https://raw.githubusercontent.com/SideswipeN7/ErrorApi/main/docs/images/logo.svg" alt="ErrorApi" width="340">
 
 **A Roslyn source generator that turns a `Result<T>` error catalog into a Minimal API error mapper *and* an OpenAPI document that actually lists the failures — plus a TypeScript union for the client.**
 
@@ -18,11 +18,11 @@ Nobody wrote `.Produces(409)`. The generator followed the handler into `IOrderSe
 
 Swagger UI, `POST /orders/{id}/pay` — five responses, each carrying its own codes, titles and example bodies. Note the `422`: two different failures share one status, and each keeps its own code.
 
-![Swagger UI showing the pay endpoint with 200, 404, 409, 410 and 422 responses, each listing its error codes and example problem documents](https://raw.githubusercontent.com/SideswipeN7/EApi/main/docs/images/swagger-pay-endpoint.png)
+![Swagger UI showing the pay endpoint with 200, 404, 409, 410 and 422 responses, each listing its error codes and example problem documents](https://raw.githubusercontent.com/SideswipeN7/ErrorApi/main/docs/images/swagger-pay-endpoint.png)
 
 The same document in Scalar — every endpoint's failures visible without expanding anything.
 
-![Scalar API reference listing all five endpoints, each with its error responses](https://raw.githubusercontent.com/SideswipeN7/EApi/main/docs/images/scalar-overview.png)
+![Scalar API reference listing all five endpoints, each with its error responses](https://raw.githubusercontent.com/SideswipeN7/ErrorApi/main/docs/images/scalar-overview.png)
 
 Reproduce both with:
 
@@ -31,6 +31,21 @@ dotnet run --project samples/Sample.Api
 ```
 
 `http://localhost:5080/swagger` · `http://localhost:5080/scalar` · `http://localhost:5080/openapi/v1.json` · `http://localhost:5080/openapi/errors.ts`
+
+The same API is built three more times, once per result library, so the difference is only ever the
+declaration style — the documents they produce are identical:
+
+```bash
+dotnet run --project samples/Sample.ErrorOr.Api      # :5081
+```
+
+```bash
+dotnet run --project samples/Sample.OneOf.Api        # :5082
+```
+
+```bash
+dotnet run --project samples/Sample.LanguageExt.Api  # :5083
+```
 
 ---
 
@@ -301,7 +316,10 @@ src/ErrorApi.LanguageExt    adapter, pinned to LanguageExt.Core 4.4.x
 tests/ErrorApi.TestKit      the generator harness, the snapshot assertion, a hand-built model
 tests/…Generator.Tests      core tests — no result library referenced, so they pass on the core alone
 tests/ErrorApi.*.Tests      one suite per adapter, each pinning its own library version
-samples/Sample.Api          a working API exercising groups, interface dispatch and [ProducesError]
+samples/Sample.Api          the reference API: route groups, interface dispatch, [ProducesError], AOT
+samples/Sample.ErrorOr.Api  the same API in ErrorOr, with codes read out of the factory calls
+samples/Sample.OneOf.Api    the same API as a union, with the failure cases carrying [Error]
+samples/Sample.LanguageExt.Api  the same API in Fin<T>, with annotated Expected subclasses
 samples/client              how the generated union is consumed
 ```
 

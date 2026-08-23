@@ -238,6 +238,17 @@ export type PostOrdersByIdPayError =
 A `switch` over `problem.code` stops compiling the moment the API gains a failure the client does not
 handle.
 
+## A runnable version of all this
+
+```bash
+dotnet run --project samples/Sample.OneOf.Api
+```
+
+The repository builds the same orders API four times — once on ErrorApi's own `Result<T>` and once
+per adapter — so you can diff the declaration styles against each other. They produce byte-identical
+contracts. Browse the document at `http://localhost:5082/scalar`, or read the generated model
+under `obj/generated/` after a build.
+
 ## Compatibility
 
 Built against OneOf 3.0.271, and verified in CI against **3.0.263 and 3.0.271**. Targets `net10.0` and is
@@ -245,5 +256,5 @@ native-AOT clean.
 
 ## Full documentation
 
-[github.com/SideswipeN7/EApi](https://github.com/SideswipeN7/EApi) — how discovery works, the `EAPI001`–`EAPI007`
+[github.com/SideswipeN7/ErrorApi](https://github.com/SideswipeN7/ErrorApi) — how discovery works, the `EAPI001`–`EAPI007`
 diagnostics, the TypeScript contract, and the ErrorOr and language-ext adapters.

@@ -206,6 +206,17 @@ export type GetOrdersByIdError = ApiProblem<"Orders.NotFound">;
 A `switch` over `problem.code` stops compiling the moment the API gains a failure the client does not
 handle.
 
+## A runnable version of all this
+
+```bash
+dotnet run --project samples/Sample.ErrorOr.Api
+```
+
+The repository builds the same orders API four times — once on ErrorApi's own `Result<T>` and once
+per adapter — so you can diff the declaration styles against each other. They produce byte-identical
+contracts. Browse the document at `http://localhost:5081/scalar`, or read the generated model
+under `obj/generated/` after a build.
+
 ## Compatibility
 
 Built against ErrorOr 2.1.1, and verified in CI against **1.10.0, 2.0.1 and 2.1.1**. Targets `net10.0`
@@ -213,5 +224,5 @@ and is native-AOT clean: resolution is a switch over string constants, never ref
 
 ## Full documentation
 
-[github.com/SideswipeN7/EApi](https://github.com/SideswipeN7/EApi) — how discovery works, the `EAPI001`–`EAPI007`
+[github.com/SideswipeN7/ErrorApi](https://github.com/SideswipeN7/ErrorApi) — how discovery works, the `EAPI001`–`EAPI007`
 diagnostics, the TypeScript contract, and the OneOf and language-ext adapters.

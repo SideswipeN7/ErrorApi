@@ -14,8 +14,8 @@
   <PropertyGroup Label="Package metadata">
     <Authors>ErrorApi contributors</Authors>
     <Product>ErrorApi</Product>
-    <PackageProjectUrl>https://github.com/SideswipeN7/EApi</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/SideswipeN7/EApi</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/SideswipeN7/ErrorApi</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/SideswipeN7/ErrorApi</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon.png</PackageIcon>

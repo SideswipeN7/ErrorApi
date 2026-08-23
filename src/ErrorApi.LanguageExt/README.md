@@ -209,6 +209,17 @@ export type GetOrdersByIdError = ApiProblem<"Orders.NotFound">;
 A `switch` over `problem.code` stops compiling the moment the API gains a failure the client does not
 handle.
 
+## A runnable version of all this
+
+```bash
+dotnet run --project samples/Sample.LanguageExt.Api
+```
+
+The repository builds the same orders API four times — once on ErrorApi's own `Result<T>` and once
+per adapter — so you can diff the declaration styles against each other. They produce byte-identical
+contracts. Browse the document at `http://localhost:5083/scalar`, or read the generated model
+under `obj/generated/` after a build.
+
 ## Compatibility
 
 Built against LanguageExt.Core 4.4.9, and verified in CI against **4.4.0 and 4.4.9**. Targets `net10.0`
@@ -219,5 +230,5 @@ issue — the adapter is about eighty lines, and the compile-time half needs no 
 
 ## Full documentation
 
-[github.com/SideswipeN7/EApi](https://github.com/SideswipeN7/EApi) — how discovery works, the `EAPI001`–`EAPI007`
+[github.com/SideswipeN7/ErrorApi](https://github.com/SideswipeN7/ErrorApi) — how discovery works, the `EAPI001`–`EAPI007`
 diagnostics, the TypeScript contract, and the ErrorOr and OneOf adapters.

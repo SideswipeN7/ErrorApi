@@ -21,6 +21,7 @@ dotnet build ErrorApi.slnx                       # must be warning-free
 dotnet test ErrorApi.slnx                        # 79 tests across four suites
 ERRORAPI_ACCEPT_SNAPSHOTS=1 dotnet test ErrorApi.slnx   # re-approve snapshots, then read the diff
 dotnet run --project samples/Sample.Api          # /swagger, /scalar, /openapi/v1.json, /openapi/errors.ts
+dotnet run --project samples/Sample.ErrorOr.Api  # and .OneOf. / .LanguageExt. — same API, same contract
 dotnet run --project samples/Sample.Api -- --emit-error-contract out.ts
 ```
 
@@ -38,7 +39,8 @@ over it during a normal build; an IL2026/IL3050 warning there is a real regressi
 | `tests/ErrorApi.TestKit` | `net10.0` | the generator harness, the snapshot assertion, `FakeMetadata` |
 | `tests/ErrorApi.Generator.Tests` | `net10.0` | core snapshot and behaviour tests; references no result library |
 | `tests/ErrorApi.{ErrorOr,OneOf,LanguageExt}.Tests` | `net10.0` | one suite per adapter, version overridable |
-| `samples/Sample.Api` | `net10.0` | the end-to-end proof |
+| `samples/Sample.Api` | `net10.0` | the reference end-to-end proof, and the only one with `PublishAot` |
+| `samples/Sample.{ErrorOr,OneOf,LanguageExt}.Api` | `net10.0` | the same API per adapter |
 
 The generator does **not** reference `ErrorApi.Abstractions`. It matches attributes by metadata name
 (`CatalogParser.ErrorAttributeName`), which is also why it can read a catalog out of a referenced assembly.
@@ -133,7 +135,12 @@ there is runtime behaviour — a behaviour test. Adapter tests do exactly this, 
    pinned default, `VersionOverride="$(<Library>TestVersion)"` on the package reference, a reference to
    `ErrorApi.TestKit`, and tests proving both halves — discovery through the generator, and mapping at
    runtime. Register the project in `ErrorApi.slnx` and add matrix rows to `.github/workflows/ci.yml`.
-5. Add a section to the README's *Bring your own Result type*.
+5. Add `samples/Sample.<Library>.Api/`: the same orders API as the others, on the same three endpoints.
+   The samples exist to be diffed against each other, so keep the domain and the routes identical and
+   let only the declaration style differ. A new sample that produces a different contract is a bug in
+   the adapter, not a licence to change the sample.
+6. Add a section to the README's *Bring your own Result type*, and a runnable-sample pointer to the
+   adapter's own README.
 
 If the library carries neither a code nor a status — FluentResults' `Result.Fail("message")` is the
 example — say so plainly instead of inventing a convention.
@@ -155,7 +162,7 @@ images. As part of a release — on the release branch, not on main — rewrite 
 which requires the repository to be public:
 
 ```bash
-sed -i 's|docs/images/|https://raw.githubusercontent.com/SideswipeN7/EApi/main/docs/images/|g' README.md
+sed -i 's|docs/images/|https://raw.githubusercontent.com/SideswipeN7/ErrorApi/main/docs/images/|g' README.md
 ```
 
 The adapter READMEs use `../../docs/images/` and need the same treatment. Doing it on main instead
