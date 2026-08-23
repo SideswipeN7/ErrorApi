@@ -26,5 +26,6 @@
     <Project Path="samples/Sample.Exceptions.Api/Sample.Exceptions.Api.csproj" />
     <Project Path="samples/Sample.Mediator.Api/Sample.Mediator.Api.csproj" />
     <Project Path="samples/Sample.FluentResults.Api/Sample.FluentResults.Api.csproj" />
+    <Project Path="samples/Sample.Mediator.Validation.Api/Sample.Mediator.Validation.Api.csproj" />
   </Folder>
 </Solution>

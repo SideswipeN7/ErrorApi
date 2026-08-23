@@ -149,6 +149,9 @@ there is runtime behaviour — a behaviour test. Adapter tests do exactly this, 
    `ErrorApi.TestKit`, and tests proving both halves — discovery through the generator, and mapping at
    runtime. Register the project in `ErrorApi.slnx` and add matrix rows to `.github/workflows/ci.yml`.
 5. Add `samples/Sample.<Library>.Api/`: the same orders API as the others, on the same three endpoints.
+   The one exception is `Sample.Mediator.Validation.Api`, which is deliberately not contract-identical:
+   it exists to show that a generic pipeline behaviour hides its failures from the walk. Do not "fix"
+   its contract to match the others — the mismatch is the point, and the README links to it.
    The samples exist to be diffed against each other, so keep the domain and the routes identical and
    let only the declaration style differ. A new sample that produces a different contract is a bug in
    the adapter, not a licence to change the sample.
