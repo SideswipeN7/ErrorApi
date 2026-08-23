@@ -114,9 +114,17 @@ internal static class NameInference
     /// </summary>
     public static string CodeFromName(ISymbol symbol, bool isErrorType)
     {
+        var name = EntryName(symbol);
         var prefix = Prefix(symbol, isErrorType);
-        return prefix.Length == 0 ? symbol.Name : prefix + "." + symbol.Name;
+        return prefix.Length == 0 ? name : prefix + "." + name;
     }
+
+    /// <summary>
+    /// The declaration's name with the noise a wire code does not need. A client switching on
+    /// <c>Orders.NotFound</c> does not care that the server models it as an exception, and
+    /// <c>NotFoundError</c> in an error catalog says "error" twice.
+    /// </summary>
+    public static string EntryName(ISymbol symbol) => TrimSuffix(symbol.Name, "Exception", "Error");
 
     private static string Prefix(ISymbol symbol, bool isErrorType)
     {
@@ -153,9 +161,11 @@ internal static class NameInference
     }
 
     /// <summary><c>OrderErrors</c> becomes <c>Order</c>, because the suffix says nothing a code needs.</summary>
-    private static string TrimErrorSuffix(string name)
+    private static string TrimErrorSuffix(string name) => TrimSuffix(name, "Errors", "Error");
+
+    private static string TrimSuffix(string name, params string[] suffixes)
     {
-        foreach (var suffix in new[] { "Errors", "Error" })
+        foreach (var suffix in suffixes)
         {
             if (name.Length > suffix.Length && name.EndsWith(suffix, StringComparison.Ordinal))
             {

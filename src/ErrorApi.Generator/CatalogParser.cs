@@ -73,7 +73,7 @@ internal static class CatalogParser
         var bodyCode = NameInference.CodeFromBody(node, context.SemanticModel);
 
         var code = declaredCode ?? bodyCode ?? NameInference.CodeFromName(symbol, isErrorType);
-        title ??= NameInference.Humanize(symbol.Name);
+        title ??= NameInference.Humanize(NameInference.EntryName(symbol));
 
         // A code written twice is a code that can drift, and the half nobody reads is the documented one.
         DiagnosticInfo? drift = declaredCode is not null && bodyCode is not null && bodyCode != declaredCode

@@ -4,7 +4,7 @@
 
 Result libraries fixed the return type. They did not fix the contract: `ErrorOr`, `FluentResults` and friends map a failure to `ProblemDetails` at runtime, so the OpenAPI document still says `200 OK` and nothing else. The frontend has no idea a `409 Orders.AlreadyPaid` exists until it happens in production.
 
-ErrorApi resolves that at compile time — and it does so whether you use its own `Result<T>`, ErrorOr, OneOf, language-ext, or a hand-rolled discriminated union.
+ErrorApi resolves that at compile time — and it does so whether you use its own `Result<T>`, ErrorOr, OneOf, language-ext, a hand-rolled discriminated union, or no result type at all: [plain exceptions work too](#no-result-type-plain-exceptions-work).
 
 ```csharp
 [Error("Orders.AlreadyPaid", 409, Title = "Order already paid",
@@ -45,6 +45,10 @@ dotnet run --project samples/Sample.OneOf.Api        # :5082
 
 ```bash
 dotnet run --project samples/Sample.LanguageExt.Api  # :5083
+```
+
+```bash
+dotnet run --project samples/Sample.Exceptions.Api   # :5084, no result type at all
 ```
 
 ---
@@ -88,6 +92,49 @@ app.MapGet("/orders/{id:guid}", (Guid id, IOrderService s) => s.GetById(id).ToHt
 ```
 
 That is the whole integration. `AddErrorApi()` registers this assembly's compile-time model and hooks an `IOpenApiOperationTransformer` into every document.
+
+---
+
+## No result type? Plain exceptions work
+
+A failure identified by a type is a shape the catalog already understands, and an exception class is
+exactly that. Annotate it, throw it as you always have, and the endpoints that can reach it get
+documented:
+
+```csharp
+[ErrorCatalog("Orders")]
+public static class OrderErrors
+{
+    [Error(404, Description = "No order exists for the supplied identifier.")]
+    public sealed class NotFoundException(Guid id) : Exception($"No order {id}.");
+}
+
+public Order GetById(Guid id) =>
+    _orders.TryGetValue(id, out var order) ? order : throw new OrderErrors.NotFoundException(id);
+```
+
+The trailing `Exception` is dropped from the inferred code — a client does not care how the server
+models the failure — so this is `Orders.NotFound`, the same code the `Result<T>` sample produces.
+
+For the response, register the handler. It is deliberately not part of `AddErrorApi()`: taking over an
+application's exception handling is not something a call by that name should do behind your back.
+
+```csharp
+builder.Services.AddErrorApi();
+builder.Services.AddErrorApiExceptionHandler();
+
+var app = builder.Build();
+app.UseExceptionHandler();
+```
+
+```json
+{ "title": "Not found", "status": 404, "detail": "No order 1111….", "code": "Orders.NotFound" }
+```
+
+The body comes from the same `Error.ToProblem()` the result path uses, so a client cannot tell which
+style the server was written in. An exception the catalog does not know is left untouched, so whatever
+handled it before still does. `Exception.Message` becomes `detail` unless you turn that off with
+`AddErrorApiExceptionHandler(o => o.UseExceptionMessageAsDetail = false)`.
 
 ---
 
@@ -292,6 +339,7 @@ The same module is served live at `/openapi/errors.ts` after `app.MapErrorContra
 | | Failure typing | Maps to `ProblemDetails` | Documents errors in OpenAPI | Typed client errors |
 | --- | --- | --- | --- | --- |
 | **ErrorOr / FluentResults / OneOf** | yes | yes, at runtime | no | no |
+| **Exceptions and a handler** | no | yes, at runtime | no | no |
 | **NSwag / Kiota** | — | — | only what you hand-wrote with `.Produces(...)` | success shapes only |
 | **`.Produces<ProblemDetails>(404)` by hand** | — | — | yes, until someone forgets | no |
 | **ErrorApi** | yes, or bring your own | yes, generated | yes, derived from the code | yes, generated union |
@@ -320,6 +368,7 @@ samples/Sample.Api          the reference API: route groups, interface dispatch,
 samples/Sample.ErrorOr.Api  the same API in ErrorOr, with codes read out of the factory calls
 samples/Sample.OneOf.Api    the same API as a union, with the failure cases carrying [Error]
 samples/Sample.LanguageExt.Api  the same API in Fin<T>, with annotated Expected subclasses
+samples/Sample.Exceptions.Api   the same API with no result type at all, only annotated exceptions
 samples/client              how the generated union is consumed
 ```
 

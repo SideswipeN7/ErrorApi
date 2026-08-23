@@ -319,7 +319,7 @@ internal sealed class ErrorReachabilityWalker
                 Discovered[value] = new DiscoveredError(
                     value,
                     status.Value,
-                    title ?? NameInference.Humanize(definition.Name),
+                    title ?? NameInference.Humanize(NameInference.EntryName(definition)),
                     detail,
                     description,
                     definition.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat));

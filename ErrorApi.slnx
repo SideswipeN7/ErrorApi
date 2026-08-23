@@ -21,5 +21,6 @@
     <Project Path="samples/Sample.ErrorOr.Api/Sample.ErrorOr.Api.csproj" />
     <Project Path="samples/Sample.OneOf.Api/Sample.OneOf.Api.csproj" />
     <Project Path="samples/Sample.LanguageExt.Api/Sample.LanguageExt.Api.csproj" />
+    <Project Path="samples/Sample.Exceptions.Api/Sample.Exceptions.Api.csproj" />
   </Folder>
 </Solution>

@@ -40,7 +40,7 @@ over it during a normal build; an IL2026/IL3050 warning there is a real regressi
 | `tests/ErrorApi.Generator.Tests` | `net10.0` | core snapshot and behaviour tests; references no result library |
 | `tests/ErrorApi.{ErrorOr,OneOf,LanguageExt}.Tests` | `net10.0` | one suite per adapter, version overridable |
 | `samples/Sample.Api` | `net10.0` | the reference end-to-end proof, and the only one with `PublishAot` |
-| `samples/Sample.{ErrorOr,OneOf,LanguageExt}.Api` | `net10.0` | the same API per adapter |
+| `samples/Sample.{ErrorOr,OneOf,LanguageExt,Exceptions}.Api` | `net10.0` | the same API per style |
 
 The generator does **not** reference `ErrorApi.Abstractions`. It matches attributes by metadata name
 (`CatalogParser.ErrorAttributeName`), which is also why it can read a catalog out of a referenced assembly.
@@ -91,6 +91,10 @@ The generator does **not** reference `ErrorApi.Abstractions`. It matches attribu
 - **Code inference has exactly one implementation.** `NameInference.CodeFromBody` and
   `CodeFromName` are shared by `CatalogParser` and `ErrorReachabilityWalker`. A symbol from a
   referenced assembly has no body to read, so cross-assembly catalogs resolve by name only.
+- **An exception type is a catalog entry like any other.** It needs no adapter because `System.Exception`
+  needs no package, so `ErrorApiExceptionHandler` lives in `ErrorApi.AspNetCore`. It writes the response
+  through `Error.ToProblem()`, the same call the result path makes, and that is not an accident: a client
+  must not be able to tell which style an endpoint was written in.
 - **Adapters do not depend on each other.** Each pins exactly one result library. Shared behaviour goes in
   `ErrorApi.AspNetCore` or in the generated model, never in a second adapter.
 
