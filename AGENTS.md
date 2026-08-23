@@ -47,6 +47,10 @@ The generator does **not** reference `ErrorApi.Abstractions`. It matches attribu
 
 ## The pipeline, file by file
 
+0. **`MappingParser`** turns each `[assembly: ErrorMapping(typeof(X), …)]` into a `CatalogEntry` for a
+   type nobody here can annotate. It produces the same `Declared` shape with `ErrorTypeDisplay` set, so
+   there is no special case downstream — and both parsers feed one dedup, which is what makes a clash
+   between a mapping and a declaration report as `EAPI001` instead of silently picking a winner.
 1. **`CatalogParser`** turns each `[Error]` declaration into a `CatalogEntry`.
    Two kinds, and the distinction matters everywhere downstream:
    - `Generated` — a `static partial` member returning `ErrorApi.Error`. The generator writes its body.

@@ -44,6 +44,14 @@ internal sealed class ErrorReachabilityWalker
     public List<string> UnresolvedDispatches { get; } = new();
 
     /// <summary>
+    /// Wire codes for types declared through <c>[assembly: ErrorMapping]</c>, keyed by fully qualified
+    /// name. A type from a referenced package carries no attribute of ours, so this is the only way the
+    /// walk can recognise one your code constructs.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> MappedTypes { get; set; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>
     /// Every <c>[Error]</c> declaration met while walking, keyed by code. Entries coming from a
     /// referenced assembly land here too, so an app can document a catalog it does not declare itself.
     /// </summary>
@@ -160,7 +168,7 @@ internal sealed class ErrorReachabilityWalker
                     ? constructor.ContainingType
                     : model.GetTypeInfo(creation).Type;
 
-                if (created is not null && TryGetErrorCode(created, out var typeCode))
+                if (created is not null && (TryGetErrorCode(created, out var typeCode) || TryGetMappedCode(created, out typeCode)))
                 {
                     codes.Add(typeCode!);
                 }
@@ -396,6 +404,9 @@ internal sealed class ErrorReachabilityWalker
             }
         }
     }
+
+    private bool TryGetMappedCode(ITypeSymbol type, out string? code) =>
+        MappedTypes.TryGetValue(type.OriginalDefinition.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), out code);
 
     private bool TryGetErrorCode(ISymbol symbol, out string? code)
     {

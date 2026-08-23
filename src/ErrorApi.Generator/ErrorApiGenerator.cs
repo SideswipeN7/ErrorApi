@@ -61,9 +61,17 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
         }
 
         var diagnostics = new List<DiagnosticInfo>();
-        var entries = CollectCatalog(parsed, diagnostics);
 
-        var scan = EndpointScanner.Scan(compilation, mapCalls, configuration, diagnostics);
+        // Mappings first: an entry attached from the outside is still an entry, and pushing both through
+        // one dedup is what makes a clash between them report as EAPI001 rather than pick a winner.
+        var entries = CollectCatalog(parsed, MappingParser.Parse(compilation, diagnostics), diagnostics);
+
+        var mappedTypes = entries
+            .Where(e => e.ErrorTypeDisplay is not null)
+            .GroupBy(e => e.ErrorTypeDisplay!, System.StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().Code, System.StringComparer.Ordinal);
+
+        var scan = EndpointScanner.Scan(compilation, mapCalls, configuration, mappedTypes, diagnostics);
         var errors = MergeErrors(entries, scan.DiscoveredErrors);
         ReportUnknownCodes(scan.Endpoints, errors, diagnostics);
 
@@ -85,10 +93,26 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
         }
     }
 
-    private static List<CatalogEntry> CollectCatalog(ImmutableArray<ParsedCatalogEntry> parsed, List<DiagnosticInfo> diagnostics)
+    private static List<CatalogEntry> CollectCatalog(
+        ImmutableArray<ParsedCatalogEntry> parsed,
+        IEnumerable<CatalogEntry> mapped,
+        List<DiagnosticInfo> diagnostics)
     {
         var byCode = new Dictionary<string, CatalogEntry>(System.StringComparer.Ordinal);
         var entries = new List<CatalogEntry>();
+
+        foreach (var entry in mapped)
+        {
+            if (byCode.TryGetValue(entry.Code, out var clash))
+            {
+                diagnostics.Add(DiagnosticInfo.Create(
+                    Diagnostics.DuplicateErrorCode, entry.Location, entry.Code, clash.DeclaringMember));
+                continue;
+            }
+
+            byCode[entry.Code] = entry;
+            entries.Add(entry);
+        }
 
         foreach (var candidate in parsed)
         {

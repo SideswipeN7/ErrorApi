@@ -142,6 +142,33 @@ handled it before still does. `Exception.Message` becomes `detail` unless you tu
 
 ---
 
+## Failures from a package you do not own
+
+`[Error]` has to sit on the declaration, which rules out anything shipped in a NuGet package. A
+mapping says the same thing from the outside — the type is still the identity, the attribute supplies
+the wire code and the status it has no way to carry:
+
+```csharp
+[assembly: ErrorMapping(typeof(StripeCardError), "Payments.CardDeclined", 402, Title = "Card declined")]
+[assembly: ErrorMapping(typeof(GatewayTimeoutException), 504)]   // code inferred: "GatewayTimeout"
+```
+
+The entry lands in the catalog, the TypeScript contract and the generated type switch like any other,
+so `TryGetCatalogError` and the exception handler resolve it at runtime with no special case.
+
+Attaching it to an endpoint is a separate question, and worth being precise about. Where **your** code
+constructs the type, the walk finds it with no help. Where the **library** raises it on its own there
+is nothing in your source to follow, so name it on the endpoints that surface it:
+
+```csharp
+payments.MapPost("/", [ProducesError("Payments.GatewayTimeout")] (IPaymentService s) => s.Charge().ToHttpResult());
+```
+
+That is the trade the mapping buys: the code is defined once instead of per endpoint, and `EAPI005`
+stops firing because it is now a real catalog entry.
+
+---
+
 ## Codes you do not have to type
 
 `[Error(404)]` is enough. The wire code is resolved in this order:
@@ -456,7 +483,7 @@ Working on this repository with a coding agent? [`AGENTS.md`](AGENTS.md) is the 
 ## Known limits
 
 - Route templates must be compile-time constants (`EAPI002` tells you when they are not).
-- Discovery follows source within the compilation. Errors raised inside a referenced assembly are found only when they flow through a call the generator can see, or when `[ProducesError]` declares them.
+- Discovery follows source within the compilation. Errors raised inside a referenced assembly are found only when they flow through a call the generator can see, or when `[ProducesError]` declares them. `[assembly: ErrorMapping]` gives such a type a catalog entry, but not an endpoint.
 - Interface dispatch resolves against the implementations *in the compilation*. A handler wired to an implementation that lives in another assembly needs `[ProducesError]`.
 - Following a message past a dispatcher is a heuristic: it matches a source type implementing a generic interface constructed with the message. A handler resolved some other way — by convention, by name, by a registry — is not found, and `EAPI009` reports it.
 - Endpoints are matched by normalized route template plus HTTP method, so two endpoints that differ only by metadata (host, version header) share one entry.

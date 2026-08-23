@@ -37,9 +37,10 @@ internal static class EndpointScanner
         Compilation compilation,
         IReadOnlyList<InvocationExpressionSyntax> candidates,
         AnalyzerConfigOptionsProvider configuration,
+        IReadOnlyDictionary<string, string> mappedTypes,
         List<DiagnosticInfo> diagnostics)
     {
-        var walker = new ErrorReachabilityWalker(compilation);
+        var walker = new ErrorReachabilityWalker(compilation) { MappedTypes = mappedTypes };
         var models = new Dictionary<(string Method, string Route), EndpointModel>();
 
         foreach (var invocation in candidates)
