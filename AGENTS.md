@@ -35,10 +35,10 @@ over it during a normal build; an IL2026/IL3050 warning there is a real regressi
 | `src/ErrorApi.Abstractions` | `netstandard2.0;net10.0` | `Error`, `Result`/`Result<T>`, `[Error]`, `[ProducesError]`, `ErrorDescriptor`, `IErrorApiMetadata`, `RoutePattern`, `ErrorApiRuntime` |
 | `src/ErrorApi.Generator` | `netstandard2.0` | the generator: parsing, the call-graph walk, the emitters |
 | `src/ErrorApi.AspNetCore` | `net10.0` | `ToHttpResult()`, the OpenAPI operation transformer, the TypeScript writer, `AddErrorApi()`'s target |
-| `src/ErrorApi.{ErrorOr,OneOf,LanguageExt}` | `net10.0` | one adapter each, pinning that library's version |
+| `src/ErrorApi.{ErrorOr,OneOf,LanguageExt,FluentResults}` | `net10.0` | one adapter each, pinning that library's version |
 | `tests/ErrorApi.TestKit` | `net10.0` | the generator harness, the snapshot assertion, `FakeMetadata` |
 | `tests/ErrorApi.Generator.Tests` | `net10.0` | core snapshot and behaviour tests; references no result library |
-| `tests/ErrorApi.{ErrorOr,OneOf,LanguageExt}.Tests` | `net10.0` | one suite per adapter, version overridable |
+| `tests/ErrorApi.{ErrorOr,OneOf,LanguageExt,FluentResults}.Tests` | `net10.0` | one suite per adapter, version overridable |
 | `samples/Sample.Api` | `net10.0` | the reference end-to-end proof, and the only one with `PublishAot` |
 | `samples/Sample.{ErrorOr,OneOf,LanguageExt,Exceptions,Mediator}.Api` | `net10.0` | the same API per style |
 
@@ -186,8 +186,11 @@ breaks the images for whoever is reading the repository.
 - Adding a member to `IErrorApiMetadata` breaks every hand-written implementation, including
   `FakeMetadata` in the tests. There are no default interface members because `Abstractions` targets
   `netstandard2.0`.
-- `ErrorOr` and `LanguageExt` both export a type named `Error`. Inside `namespace ErrorApi.Interop` the
-  bare name binds to *ours*; alias theirs (`using LangError = LanguageExt.Common.Error;`).
+- Three of the four adapted libraries collide with a name of ours. `ErrorOr` and `LanguageExt` export
+  `Error`; `FluentResults` exports `Result`. Inside `namespace ErrorApi.Interop` the bare name binds to
+  *ours*, and an alias cannot cover an open generic — `FluentResults.Result<T>` has to be written out
+  with `global::`. In user code the practical answer differs per library, and each adapter README says
+  which: alias theirs, or drop `using ErrorApi;` and spell our attributes out.
 - The generator runs on this repository's own projects. A change that emits invalid code shows up as a
   build failure in `ErrorApi.AspNetCore` before any test runs.
 - `EAPI002` fires on `MapErrorContract`'s parameterised route by design; it is suppressed via `<NoWarn>`

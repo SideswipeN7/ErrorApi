@@ -55,6 +55,10 @@ dotnet run --project samples/Sample.Exceptions.Api   # :5084, no result type at 
 dotnet run --project samples/Sample.Mediator.Api     # :5085, endpoints behind MediatR
 ```
 
+```bash
+dotnet run --project samples/Sample.FluentResults.Api  # :5086
+```
+
 ---
 
 ## Quickstart
@@ -252,6 +256,36 @@ return outcome switch
 };
 ```
 
+### `ErrorApi.FluentResults`
+
+`Result.Fail("order not found")` carries a message and nothing else — no code, no status, nothing a
+document could promise. Model each failure as its own `Error` subclass, which is what FluentResults
+recommends anyway, and the type becomes the identity:
+
+```csharp
+using FluentError = FluentResults.Error;
+
+[ErrorApi.ErrorCatalog("Orders")]
+public static class OrderErrors
+{
+    [ErrorApi.Error(404)]
+    public sealed class NotFound(Guid id) : FluentError($"No order {id}.");
+}
+
+public Result<Order> GetById(Guid id) =>
+    _orders.TryGetValue(id, out var order) ? Result.Ok(order) : Result.Fail(new OrderErrors.NotFound(id));
+
+orders.MapGet("/{id:guid}", (Guid id, IOrderService s) => s.GetById(id).ToHttpResult());
+```
+
+A result carrying several errors answers with the first one — that is what keeps the response matching
+the document. `.WithMetadata("code", …)` is the second way in, for failures you do not want a type for.
+A bare `Result.Fail("message")` becomes a 500 carrying the message, which is deliberately unhelpful as
+a contract, because a message is not one.
+
+> **Naming note.** FluentResults and ErrorApi both export `Result`, so a file cannot import both
+> namespaces. Let FluentResults keep the plain name and spell ours out as `[ErrorApi.Error(...)]`.
+
 ### `ErrorApi.LanguageExt`
 
 language-ext errors carry a numeric code and a message, neither of which says anything about HTTP. Annotating your own `Expected` subclasses supplies the missing half.
@@ -430,6 +464,7 @@ src/ErrorApi.AspNetCore     Result→IResult mapping, the OpenAPI transformer, t
 src/ErrorApi.ErrorOr        adapter, pinned to ErrorOr 2.1.x
 src/ErrorApi.OneOf          adapter, pinned to OneOf 3.0.x — and the entry point for hand-rolled unions
 src/ErrorApi.LanguageExt    adapter, pinned to LanguageExt.Core 4.4.x
+src/ErrorApi.FluentResults  adapter, pinned to FluentResults 3.16.x
 tests/ErrorApi.TestKit      the generator harness, the snapshot assertion, a hand-built model
 tests/…Generator.Tests      core tests — no result library referenced, so they pass on the core alone
 tests/ErrorApi.*.Tests      one suite per adapter, each pinning its own library version
@@ -439,6 +474,7 @@ samples/Sample.OneOf.Api    the same API as a union, with the failure cases carr
 samples/Sample.LanguageExt.Api  the same API in Fin<T>, with annotated Expected subclasses
 samples/Sample.Exceptions.Api   the same API with no result type at all, only annotated exceptions
 samples/Sample.Mediator.Api     the same API with every endpoint behind MediatR
+samples/Sample.FluentResults.Api  the same API in FluentResults, with annotated Error subclasses
 samples/client              how the generated union is consumed
 ```
 
@@ -474,7 +510,7 @@ dotnet test tests/ErrorApi.LanguageExt.Tests -p:LanguageExtTestVersion=4.4.0
 ```
 
 CI runs that as a matrix. The adapters are verified against ErrorOr 1.10.0 / 2.0.1 / 2.1.1,
-OneOf 3.0.263 / 3.0.271 and LanguageExt.Core 4.4.0 / 4.4.9.
+OneOf 3.0.263 / 3.0.271, LanguageExt.Core 4.4.0 / 4.4.9 and FluentResults 3.15.0 / 3.16.0.
 
 Working on this repository with a coding agent? [`AGENTS.md`](AGENTS.md) is the map: invariants, where each concern lives, and the checks that have to pass.
 
@@ -488,4 +524,3 @@ Working on this repository with a coding agent? [`AGENTS.md`](AGENTS.md) is the 
 - Following a message past a dispatcher is a heuristic: it matches a source type implementing a generic interface constructed with the message. A handler resolved some other way — by convention, by name, by a registry — is not found, and `EAPI009` reports it.
 - Endpoints are matched by normalized route template plus HTTP method, so two endpoints that differ only by metadata (host, version header) share one entry.
 - The call walk is bounded at a depth of 12, which is generous for an endpoint but not unlimited.
-- FluentResults has no adapter: `Result.Fail("message")` carries neither a code nor a status, so there is nothing to read. Annotating your own `IError` subclasses works today through declarative mode; only the `ToHttpResult()` glue is missing.

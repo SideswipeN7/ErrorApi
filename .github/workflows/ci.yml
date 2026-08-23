@@ -71,6 +71,12 @@ jobs:
           - adapter: LanguageExt
             property: LanguageExtTestVersion
             version: '4.4.9'
+          - adapter: FluentResults
+            property: FluentResultsTestVersion
+            version: '3.15.0'
+          - adapter: FluentResults
+            property: FluentResultsTestVersion
+            version: '3.16.0'
     name: ${{ matrix.adapter }} ${{ matrix.version }}
     steps:
       - uses: actions/checkout@v4

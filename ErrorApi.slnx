@@ -8,6 +8,7 @@
     <Project Path="src/ErrorApi.ErrorOr/ErrorApi.ErrorOr.csproj" />
     <Project Path="src/ErrorApi.OneOf/ErrorApi.OneOf.csproj" />
     <Project Path="src/ErrorApi.LanguageExt/ErrorApi.LanguageExt.csproj" />
+    <Project Path="src/ErrorApi.FluentResults/ErrorApi.FluentResults.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ErrorApi.TestKit/ErrorApi.TestKit.csproj" />
@@ -15,6 +16,7 @@
     <Project Path="tests/ErrorApi.ErrorOr.Tests/ErrorApi.ErrorOr.Tests.csproj" />
     <Project Path="tests/ErrorApi.OneOf.Tests/ErrorApi.OneOf.Tests.csproj" />
     <Project Path="tests/ErrorApi.LanguageExt.Tests/ErrorApi.LanguageExt.Tests.csproj" />
+    <Project Path="tests/ErrorApi.FluentResults.Tests/ErrorApi.FluentResults.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Sample.Api/Sample.Api.csproj" />
@@ -23,5 +25,6 @@
     <Project Path="samples/Sample.LanguageExt.Api/Sample.LanguageExt.Api.csproj" />
     <Project Path="samples/Sample.Exceptions.Api/Sample.Exceptions.Api.csproj" />
     <Project Path="samples/Sample.Mediator.Api/Sample.Mediator.Api.csproj" />
+    <Project Path="samples/Sample.FluentResults.Api/Sample.FluentResults.Api.csproj" />
   </Folder>
 </Solution>

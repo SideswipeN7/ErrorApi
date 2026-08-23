@@ -18,6 +18,7 @@
     <PackageVersion Include="OneOf" Version="3.0.271" />
     <PackageVersion Include="LanguageExt.Core" Version="4.4.9" />
     <PackageVersion Include="MediatR" Version="12.4.1" />
+    <PackageVersion Include="FluentResults" Version="3.16.0" />
   </ItemGroup>
 
   <ItemGroup Label="Tests">
