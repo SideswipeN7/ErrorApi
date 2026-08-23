@@ -40,7 +40,7 @@ over it during a normal build; an IL2026/IL3050 warning there is a real regressi
 | `tests/ErrorApi.Generator.Tests` | `net10.0` | core snapshot and behaviour tests; references no result library |
 | `tests/ErrorApi.{ErrorOr,OneOf,LanguageExt}.Tests` | `net10.0` | one suite per adapter, version overridable |
 | `samples/Sample.Api` | `net10.0` | the reference end-to-end proof, and the only one with `PublishAot` |
-| `samples/Sample.{ErrorOr,OneOf,LanguageExt,Exceptions}.Api` | `net10.0` | the same API per style |
+| `samples/Sample.{ErrorOr,OneOf,LanguageExt,Exceptions,Mediator}.Api` | `net10.0` | the same API per style |
 
 The generator does **not** reference `ErrorApi.Abstractions`. It matches attributes by metadata name
 (`CatalogParser.ErrorAttributeName`), which is also why it can read a catalog out of a referenced assembly.
@@ -65,6 +65,11 @@ The generator does **not** reference `ErrorApi.Abstractions`. It matches attribu
    functions, and **through interface and virtual dispatch** to implementations in the compilation —
    collecting `[Error]` member reads, `[Error]` type constructions, and `[ProducesError]` declarations.
    Bounded at depth 12, cycle-safe, semantic models cached per tree.
+   When a call is *dispatch-shaped* — an interface or abstract method with no implementation in the
+   compilation — it reinterprets the arguments as messages and walks the source types implementing a
+   generic interface constructed with them. That is the mediator bridge; the condition is "is there
+   anything to step into", not "does the callee have source", and getting that wrong makes the whole
+   feature silently do nothing. Off via `errorapi_follow_dispatch = false`.
 4. **`Emit/CatalogEmitter`** writes the implementing partials (generated entries only).
    **`Emit/MetadataEmitter`** writes the descriptor table, the endpoint map, the code switch, the
    instance-type switch, and the zero-argument `AddErrorApi()` overload.

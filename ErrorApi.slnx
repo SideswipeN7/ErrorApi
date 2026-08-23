@@ -22,5 +22,6 @@
     <Project Path="samples/Sample.OneOf.Api/Sample.OneOf.Api.csproj" />
     <Project Path="samples/Sample.LanguageExt.Api/Sample.LanguageExt.Api.csproj" />
     <Project Path="samples/Sample.Exceptions.Api/Sample.Exceptions.Api.csproj" />
+    <Project Path="samples/Sample.Mediator.Api/Sample.Mediator.Api.csproj" />
   </Folder>
 </Solution>

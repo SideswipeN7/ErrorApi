@@ -60,6 +60,15 @@ internal static class Diagnostics
         isEnabledByDefault: true,
         description: "Drop the code from the attribute and let it be inferred from the body, or make the two agree.");
 
+    public static readonly DiagnosticDescriptor UnresolvedDispatch = new(
+        id: "EAPI009",
+        title: "The walk stopped at a dispatcher",
+        messageFormat: "'{0} {1}' reaches '{2}', whose implementation is outside this compilation, and no handler was found for the message; failures raised behind it are not documented",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "An endpoint behind an unreadable dispatcher is documented as having no failures at all, which reads as deliberate. Declare them with [ProducesError], or keep the handler in the same compilation so it can be followed.");
+
     public static readonly DiagnosticDescriptor NoErrorsDiscovered = new(
         id: "EAPI006",
         title: "Endpoint declares no errors",

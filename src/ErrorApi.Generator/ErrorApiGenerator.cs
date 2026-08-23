@@ -5,6 +5,7 @@ using ErrorApi.Generator.Emit;
 using ErrorApi.Generator.Helpers;
 using ErrorApi.Generator.Model;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace ErrorApi.Generator;
@@ -38,18 +39,20 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
                 static (ctx, _) => (InvocationExpressionSyntax)ctx.Node)
             .Collect();
 
-        var input = context.CompilationProvider.Combine(catalog).Combine(mapCalls);
+        var input = context.CompilationProvider.Combine(catalog).Combine(mapCalls)
+            .Combine(context.AnalyzerConfigOptionsProvider);
 
         context.RegisterSourceOutput(
             input,
-            static (spc, data) => Execute(spc, data.Left.Left, data.Left.Right, data.Right));
+            static (spc, data) => Execute(spc, data.Left.Left.Left, data.Left.Left.Right, data.Left.Right, data.Right));
     }
 
     private static void Execute(
         SourceProductionContext context,
         Compilation compilation,
         ImmutableArray<ParsedCatalogEntry> parsed,
-        ImmutableArray<InvocationExpressionSyntax> mapCalls)
+        ImmutableArray<InvocationExpressionSyntax> mapCalls,
+        AnalyzerConfigOptionsProvider configuration)
     {
         if (compilation.GetTypeByMetadataName(MetadataInterfaceName) is null)
         {
@@ -60,7 +63,7 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
         var diagnostics = new List<DiagnosticInfo>();
         var entries = CollectCatalog(parsed, diagnostics);
 
-        var scan = EndpointScanner.Scan(compilation, mapCalls, diagnostics);
+        var scan = EndpointScanner.Scan(compilation, mapCalls, configuration, diagnostics);
         var errors = MergeErrors(entries, scan.DiscoveredErrors);
         ReportUnknownCodes(scan.Endpoints, errors, diagnostics);
 

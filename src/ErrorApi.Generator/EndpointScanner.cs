@@ -4,6 +4,7 @@ using System.Linq;
 using ErrorApi.Generator.Helpers;
 using ErrorApi.Generator.Model;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace ErrorApi.Generator;
@@ -35,6 +36,7 @@ internal static class EndpointScanner
     public static ScanResult Scan(
         Compilation compilation,
         IReadOnlyList<InvocationExpressionSyntax> candidates,
+        AnalyzerConfigOptionsProvider configuration,
         List<DiagnosticInfo> diagnostics)
     {
         var walker = new ErrorReachabilityWalker(compilation);
@@ -82,13 +84,22 @@ internal static class EndpointScanner
                 diagnostics.Add(DiagnosticInfo.Create(Diagnostics.UnresolvedHandler, invocation, httpMethod, route));
             }
 
+            walker.FollowDispatch = FollowsDispatch(configuration, invocation.SyntaxTree);
+
             var codes = walker.Collect(handler, model);
+            var unresolved = walker.UnresolvedDispatches.FirstOrDefault();
             var key = (httpMethod, route);
 
             if (models.TryGetValue(key, out var existing))
             {
                 // The same route mapped twice (for example once per feature module): union the contracts.
                 codes.UnionWith(existing.ErrorCodes);
+            }
+            else if (codes.Count == 0 && unresolved is not null)
+            {
+                // More specific than EAPI006, and the one worth reporting: the walk did not come up
+                // empty, it was stopped.
+                diagnostics.Add(DiagnosticInfo.Create(Diagnostics.UnresolvedDispatch, invocation, httpMethod, route, unresolved));
             }
             else if (codes.Count == 0 && ReturnsResult(handler, model))
             {
@@ -115,6 +126,15 @@ internal static class EndpointScanner
 
         return new ScanResult(endpoints, discovered);
     }
+
+    /// <summary>
+    /// Reads <c>errorapi_follow_dispatch</c> from .editorconfig. A heuristic without an off switch is a
+    /// liability; following a message into its handler is on unless a project says otherwise.
+    /// </summary>
+    private static bool FollowsDispatch(AnalyzerConfigOptionsProvider configuration, SyntaxTree tree) =>
+        !configuration.GetOptions(tree).TryGetValue("errorapi_follow_dispatch", out var value)
+        || !bool.TryParse(value, out var enabled)
+        || enabled;
 
     private static bool IsEndpointMapping(IMethodSymbol symbol)
     {

@@ -51,6 +51,10 @@ dotnet run --project samples/Sample.LanguageExt.Api  # :5083
 dotnet run --project samples/Sample.Exceptions.Api   # :5084, no result type at all
 ```
 
+```bash
+dotnet run --project samples/Sample.Mediator.Api     # :5085, endpoints behind MediatR
+```
+
 ---
 
 ## Quickstart
@@ -273,9 +277,46 @@ For each `MapGet`/`MapPost`/`MapPut`/`MapDelete`/`MapPatch`/`MapMethods`/`Map` c
 
 1. reads the route template — including any `MapGroup` prefixes, followed back through the local the group was assigned to and through intermediate calls like `.WithTags(...)`;
 2. resolves the handler, whether it is a lambda or a method group;
-3. walks the handler body, following every call into source — including **through interface and virtual dispatch**, by resolving the implementations present in the compilation — and records every `[Error]` member it reads and every `[Error]` type it sees constructed.
+3. walks the handler body, following every call into source — including **through interface and virtual dispatch**, by resolving the implementations present in the compilation — and records every `[Error]` member it reads and every `[Error]` type it sees constructed;
+4. follows a message past a dispatcher it cannot read — see below.
 
 Step 3 is what a runtime mapper cannot do. Endpoints normally talk to an `IOrderService`; the errors live two or three layers down.
+
+### Endpoints behind a mediator
+
+`sender.Send(new GetOrder(id))` used to end the walk. `ISender.Send` is implemented inside MediatR, so
+there is nothing to step into — while the handler that actually raises the failures sits right there in
+your compilation, just not reachable by following calls. The endpoint came out documented as having no
+failures at all, which reads as deliberate.
+
+The bridge is the message type. A handler is a source type implementing a generic interface constructed
+with the message, which is the shape MediatR, Wolverine and Brighter all share — nothing in the
+generator names a library:
+
+```csharp
+public sealed record GetOrder(Guid Id) : IRequest<Result<Order>>;
+
+public sealed class GetOrderHandler(OrderStore store) : IRequestHandler<GetOrder, Result<Order>>
+{
+    public Task<Result<Order>> Handle(GetOrder request, CancellationToken ct) =>
+        Task.FromResult(store.Find(request.Id));   // returns OrderErrors.NotFound
+}
+
+orders.MapGet("/{id:guid}", async (Guid id, ISender sender) =>
+    (await sender.Send(new GetOrder(id))).ToHttpResult());   // documents 404
+```
+
+It deliberately over-matches a little: a validator declared as `IValidator<GetOrder>` matches too, and
+walking it is right — its failures do reach that endpoint. Turn it off per project if the guess is wrong
+for you:
+
+```ini
+[*.cs]
+errorapi_follow_dispatch = false
+```
+
+When a dispatch cannot be resolved and the endpoint ends up with nothing at all, `EAPI009` says so
+rather than letting the silence look intentional.
 
 When the walk cannot see the failure — it comes from a referenced assembly, or from a delegate built at runtime — declare it:
 
@@ -298,6 +339,7 @@ orders.MapGet("/", [ProducesError("Common.RateLimited")] (IOrderService service)
 | `EAPI006` | Info | A handler returning `Result` reaches no catalog entry at all. |
 | `EAPI007` | Warning | The handler could not be resolved to source. |
 | `EAPI008` | Warning | An explicit code disagrees with the `code:` literal in the member's body. |
+| `EAPI009` | Warning | The walk stopped at a dispatcher and the endpoint documents no failures. |
 
 Generator diagnostics are not suppressible with `#pragma`; tune them in `.editorconfig` or `<NoWarn>`.
 
@@ -369,6 +411,7 @@ samples/Sample.ErrorOr.Api  the same API in ErrorOr, with codes read out of the 
 samples/Sample.OneOf.Api    the same API as a union, with the failure cases carrying [Error]
 samples/Sample.LanguageExt.Api  the same API in Fin<T>, with annotated Expected subclasses
 samples/Sample.Exceptions.Api   the same API with no result type at all, only annotated exceptions
+samples/Sample.Mediator.Api     the same API with every endpoint behind MediatR
 samples/client              how the generated union is consumed
 ```
 
@@ -415,6 +458,7 @@ Working on this repository with a coding agent? [`AGENTS.md`](AGENTS.md) is the 
 - Route templates must be compile-time constants (`EAPI002` tells you when they are not).
 - Discovery follows source within the compilation. Errors raised inside a referenced assembly are found only when they flow through a call the generator can see, or when `[ProducesError]` declares them.
 - Interface dispatch resolves against the implementations *in the compilation*. A handler wired to an implementation that lives in another assembly needs `[ProducesError]`.
+- Following a message past a dispatcher is a heuristic: it matches a source type implementing a generic interface constructed with the message. A handler resolved some other way — by convention, by name, by a registry — is not found, and `EAPI009` reports it.
 - Endpoints are matched by normalized route template plus HTTP method, so two endpoints that differ only by metadata (host, version header) share one entry.
 - The call walk is bounded at a depth of 12, which is generous for an endpoint but not unlimited.
 - FluentResults has no adapter: `Result.Fail("message")` carries neither a code nor a status, so there is nothing to read. Annotating your own `IError` subclasses works today through declarative mode; only the `ToHttpResult()` glue is missing.

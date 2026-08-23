@@ -23,9 +23,25 @@ internal sealed class ErrorReachabilityWalker
     private readonly Dictionary<INamedTypeSymbol, List<INamedTypeSymbol>> _implementations =
         new(SymbolEqualityComparer.Default);
 
+    private readonly Dictionary<INamedTypeSymbol, List<INamedTypeSymbol>> _handlers =
+        new(SymbolEqualityComparer.Default);
+
     private List<INamedTypeSymbol>? _sourceTypes;
 
     public ErrorReachabilityWalker(Compilation compilation) => _compilation = compilation;
+
+    /// <summary>
+    /// Whether to follow a message past a dispatcher it cannot read, such as a mediator's <c>Send</c>.
+    /// </summary>
+    public bool FollowDispatch { get; set; } = true;
+
+    /// <summary>
+    /// Calls the last <see cref="Collect"/> could not see past. A mediator, a message bus or any other
+    /// indirection whose implementation lives outside the compilation ends the walk, and an endpoint
+    /// behind one is documented as having no failures at all — which is worse than being wrong, because
+    /// it looks deliberate. <c>EndpointScanner</c> turns these into <c>EAPI009</c>.
+    /// </summary>
+    public List<string> UnresolvedDispatches { get; } = new();
 
     /// <summary>
     /// Every <c>[Error]</c> declaration met while walking, keyed by code. Entries coming from a
@@ -38,6 +54,8 @@ internal sealed class ErrorReachabilityWalker
     {
         var codes = new SortedSet<string>(StringComparer.Ordinal);
         var visited = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+
+        UnresolvedDispatches.Clear();
 
         if (handlerNode is AnonymousFunctionExpressionSyntax lambda)
         {
@@ -132,6 +150,7 @@ internal sealed class ErrorReachabilityWalker
                 else
                 {
                     VisitMethod(target, depth + 1, codes, visited);
+                    VisitDispatchTargets(invocation, target, model, depth, codes, visited);
                 }
             }
             else if (node is BaseObjectCreationExpressionSyntax creation)
@@ -155,6 +174,109 @@ internal sealed class ErrorReachabilityWalker
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Follows a message past a dispatcher the walk cannot read.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>sender.Send(new GetOrder(id))</c> ends the walk: <c>ISender.Send</c> is implemented in a
+    /// referenced assembly, so there is nothing to step into — and the handler that actually raises the
+    /// failures is right there in the compilation, just not reachable by following calls.
+    /// </para>
+    /// <para>
+    /// The bridge is the message type. A handler is a source type that implements a generic interface
+    /// constructed with the message, which is the shape MediatR, Wolverine and Brighter all share, so
+    /// nothing here names a library. The argument type has to come from source: a dispatcher is handed
+    /// your own message types, and requiring that keeps <c>IEquatable&lt;Guid&gt;</c> and friends out.
+    /// </para>
+    /// <para>
+    /// This deliberately over-matches a little. A validator declared as <c>IValidator&lt;GetOrder&gt;</c>
+    /// matches too, and walking it is right: its failures do reach that endpoint.
+    /// </para>
+    /// </remarks>
+    private void VisitDispatchTargets(
+        InvocationExpressionSyntax invocation,
+        IMethodSymbol target,
+        SemanticModel model,
+        int depth,
+        SortedSet<string> codes,
+        HashSet<ISymbol> visited)
+    {
+        // Only a call the walk could not follow is worth reinterpreting as a dispatch. The question is
+        // not whether the callee has source — an interface declared right here has plenty — but whether
+        // there is an implementation to step into.
+        if (!FollowDispatch || depth > MaxDepth || !IsUnresolvedDispatchShape(target))
+        {
+            return;
+        }
+
+        foreach (var argument in invocation.ArgumentList.Arguments)
+        {
+            if (model.GetTypeInfo(argument.Expression).Type is not INamedTypeSymbol { DeclaringSyntaxReferences.Length: > 0 } message)
+            {
+                continue;
+            }
+
+            var handlers = FindHandlersFor(message);
+            if (handlers.Count == 0)
+            {
+                UnresolvedDispatches.Add(target.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat));
+                continue;
+            }
+
+            foreach (var handler in handlers)
+            {
+                foreach (var method in handler.GetMembers().OfType<IMethodSymbol>())
+                {
+                    VisitMethod(method, depth + 1, codes, visited);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// A call worth reinterpreting: dispatched through an abstraction, with no implementation in the
+    /// compilation to follow. A static or concrete call into a referenced assembly is not a dispatch,
+    /// and treating it as one would turn every <c>Console.WriteLine</c> into a guess.
+    /// </summary>
+    private bool IsUnresolvedDispatchShape(IMethodSymbol target)
+    {
+        var definition = target.OriginalDefinition;
+
+        var dispatched = definition.ContainingType?.TypeKind == TypeKind.Interface || definition.IsAbstract;
+
+        return dispatched && !FindImplementations(definition).Any();
+    }
+
+    private List<INamedTypeSymbol> FindHandlersFor(INamedTypeSymbol message)
+    {
+        if (_handlers.TryGetValue(message, out var cached))
+        {
+            return cached;
+        }
+
+        var result = new List<INamedTypeSymbol>();
+        foreach (var type in GetSourceTypes())
+        {
+            if (type.TypeKind is not (TypeKind.Class or TypeKind.Struct)
+                || SymbolEqualityComparer.Default.Equals(type, message))
+            {
+                continue;
+            }
+
+            var handles = type.AllInterfaces.Any(i =>
+                i.IsGenericType && i.TypeArguments.Any(a => SymbolEqualityComparer.Default.Equals(a, message)));
+
+            if (handles)
+            {
+                result.Add(type);
+            }
+        }
+
+        _handlers[message] = result;
+        return result;
     }
 
     private IEnumerable<IMethodSymbol> FindImplementations(IMethodSymbol method)
