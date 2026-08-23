@@ -51,6 +51,15 @@ internal static class Diagnostics
         isEnabledByDefault: true,
         description: "Declared codes must exist in the catalog, otherwise the documented contract drifts from the code.");
 
+    public static readonly DiagnosticDescriptor CodeDisagreesWithBody = new(
+        id: "EAPI008",
+        title: "Declared error code disagrees with the code in the body",
+        messageFormat: "[Error] declares '{0}' but the member's body passes '{1}' as the code; the documented contract and the wire response would differ",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "Drop the code from the attribute and let it be inferred from the body, or make the two agree.");
+
     public static readonly DiagnosticDescriptor NoErrorsDiscovered = new(
         id: "EAPI006",
         title: "Endpoint declares no errors",

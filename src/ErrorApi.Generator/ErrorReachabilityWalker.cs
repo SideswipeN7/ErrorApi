@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ErrorApi.Generator.Helpers;
 using ErrorApi.Generator.Model;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -276,15 +277,29 @@ internal sealed class ErrorReachabilityWalker
 
     private bool TryGetErrorCode(ISymbol symbol, out string? code)
     {
-        foreach (var attribute in symbol.OriginalDefinition.GetAttributes())
+        var definition = symbol.OriginalDefinition;
+
+        foreach (var attribute in definition.GetAttributes())
         {
-            if (attribute.AttributeClass?.ToDisplayString() != CatalogParser.ErrorAttributeName
-                || attribute.ConstructorArguments.Length < 2
-                || attribute.ConstructorArguments[0].Value is not string value)
+            if (attribute.AttributeClass?.ToDisplayString() != CatalogParser.ErrorAttributeName)
             {
                 continue;
             }
 
+            var status = attribute.ConstructorArguments.Length switch
+            {
+                1 => attribute.ConstructorArguments[0].Value as int?,
+                2 => attribute.ConstructorArguments[1].Value as int?,
+                _ => null,
+            };
+
+            if (status is null)
+            {
+                continue;
+            }
+
+            // The same resolution the catalog parser applies, so the walk and the catalog agree.
+            var value = NameInference.ResolveCode(definition, attribute, _compilation, GetModel);
             code = value;
 
             if (!Discovered.ContainsKey(value))
@@ -303,11 +318,11 @@ internal sealed class ErrorReachabilityWalker
 
                 Discovered[value] = new DiscoveredError(
                     value,
-                    attribute.ConstructorArguments[1].Value as int? ?? 500,
-                    title,
+                    status.Value,
+                    title ?? NameInference.Humanize(definition.Name),
                     detail,
                     description,
-                    symbol.OriginalDefinition.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat));
+                    definition.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat));
             }
 
             return true;

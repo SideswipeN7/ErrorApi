@@ -41,17 +41,20 @@ dotnet run --project samples/Sample.Api
 ```csharp
 using ErrorApi;
 
+[ErrorCatalog("Orders")]
 public static partial class OrderErrors
 {
-    [Error("Orders.NotFound", StatusCodes.Status404NotFound, Title = "Order not found")]
+    [Error(StatusCodes.Status404NotFound, Title = "Order not found")]
     public static partial Error NotFound { get; }
 
-    [Error("Orders.AlreadyPaid", StatusCodes.Status409Conflict,
-        Title = "Order already paid",
-        Detail = "Order {0} was already paid.")]
+    [Error(StatusCodes.Status409Conflict, Detail = "Order {0} was already paid.")]
     public static partial Error AlreadyPaid(Guid orderId);
 }
 ```
+
+The attribute carries the status and nothing else it does not have to: `NotFound` becomes the code
+`Orders.NotFound` and the title `Not found`. [Codes you do not have to type](#codes-you-do-not-have-to-type)
+has the rules.
 
 **2. Return them.** Nothing special — `Error` converts implicitly into `Result<T>`.
 
@@ -70,6 +73,39 @@ app.MapGet("/orders/{id:guid}", (Guid id, IOrderService s) => s.GetById(id).ToHt
 ```
 
 That is the whole integration. `AddErrorApi()` registers this assembly's compile-time model and hooks an `IOpenApiOperationTransformer` into every document.
+
+---
+
+## Codes you do not have to type
+
+`[Error(404)]` is enough. The wire code is resolved in this order:
+
+1. the explicit argument, `[Error("Orders.NotFound", 404)]`;
+2. a `code:` string literal in the member's own body — which is where ErrorOr and most factory-style
+   error APIs already put it;
+3. the declaration's name, prefixed by its catalog.
+
+The prefix comes from `[ErrorCatalog("Orders")]` on the type or on the assembly. Without one, a member
+takes its containing type's name with a trailing `Errors` removed — `OrderErrors.NotFound` yields
+`Order.NotFound` — and an annotated type takes its own name unchanged.
+
+The title defaults to the name read as a sentence: `AlreadyPaid` becomes `Already paid`. Set `Title`
+when a better one exists, which for a catalog member it usually does.
+
+Rule 2 is what collapses an ErrorOr catalog to a single attribute argument, and it removes a drift risk
+along the way: the documented code and the code on the wire come from the same literal. Write the code
+twice and let the two disagree, and `EAPI008` says so.
+
+```csharp
+public static class OrderErrors
+{
+    [ErrorApi.Error(404)]  // -> "Orders.NotFound", read out of the line below
+    public static Error NotFound => Error.NotFound("Orders.NotFound", "No such order.");
+}
+```
+
+A symbol from a referenced assembly has no body to read, so a catalog other assemblies consume should
+not lean on rule 2 — spell the code out, or let it come from the name.
 
 ---
 
@@ -199,6 +235,7 @@ orders.MapGet("/", [ProducesError("Common.RateLimited")] (IOrderService service)
 | `EAPI005` | Warning | `[ProducesError]` names a code that is not in the catalog. |
 | `EAPI006` | Info | A handler returning `Result` reaches no catalog entry at all. |
 | `EAPI007` | Warning | The handler could not be resolved to source. |
+| `EAPI008` | Warning | An explicit code disagrees with the `code:` literal in the member's body. |
 
 Generator diagnostics are not suppressible with `#pragma`; tune them in `.editorconfig` or `<NoWarn>`.
 

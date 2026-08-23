@@ -49,6 +49,11 @@ public sealed record OrderAlreadyPaid(Guid Id) : Expected("Order already paid", 
 > as `[ErrorApi.Error(...)]` — or add `using ErrorAttribute = ErrorApi.ErrorAttribute;` to the file and
 > keep writing `[Error(...)]`.
 
+The code and the title can be left to the generator: `[ErrorApi.Error(404)]` alone yields the code
+`OrderNotFound` and the title `Order not found`. This README spells them out because a dotted code
+reads better in a document shared with a frontend; `[assembly: ErrorApi.ErrorCatalog("Orders")]` puts
+a prefix in front of every inferred one.
+
 ### 2. The service
 
 **Not one line changes.** This is the part people expect to have to rewrite, and do not:

@@ -30,11 +30,26 @@ internal static class CatalogParser
         var display = symbol.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat);
 
         var attribute = context.Attributes[0];
-        if (attribute.ConstructorArguments.Length < 2
-            || attribute.ConstructorArguments[0].Value is not string code
-            || attribute.ConstructorArguments[1].Value is not int statusCode)
+
+        // [Error(404)] leaves the code to be inferred; [Error("Orders.NotFound", 404)] spells it out.
+        var arguments = attribute.ConstructorArguments;
+        string? declaredCode;
+        int statusCode;
+
+        switch (arguments.Length)
         {
-            return Invalid(node, display, "the [Error] arguments could not be read as (string code, int statusCode)");
+            case 1 when arguments[0].Value is int statusOnly:
+                declaredCode = null;
+                statusCode = statusOnly;
+                break;
+
+            case 2 when arguments[0].Value is string explicitCode && arguments[1].Value is int status:
+                declaredCode = explicitCode;
+                statusCode = status;
+                break;
+
+            default:
+                return Invalid(node, display, "the [Error] arguments could not be read as (int statusCode) or (string code, int statusCode)");
         }
 
         if (statusCode is < 100 or > 599)
@@ -54,9 +69,22 @@ internal static class CatalogParser
             }
         }
 
-        return symbol is INamedTypeSymbol type
+        var isErrorType = symbol is INamedTypeSymbol;
+        var bodyCode = NameInference.CodeFromBody(node, context.SemanticModel);
+
+        var code = declaredCode ?? bodyCode ?? NameInference.CodeFromName(symbol, isErrorType);
+        title ??= NameInference.Humanize(symbol.Name);
+
+        // A code written twice is a code that can drift, and the half nobody reads is the documented one.
+        DiagnosticInfo? drift = declaredCode is not null && bodyCode is not null && bodyCode != declaredCode
+            ? DiagnosticInfo.Create(Diagnostics.CodeDisagreesWithBody, node, declaredCode, bodyCode)
+            : null;
+
+        var parsed = symbol is INamedTypeSymbol type
             ? ParseErrorType(type, node, code, statusCode, title, detail, description)
             : ParseMember(symbol, node, display, code, statusCode, title, detail, description);
+
+        return drift is null || parsed.Diagnostic is not null ? parsed : parsed with { Diagnostic = drift };
     }
 
     /// <summary>

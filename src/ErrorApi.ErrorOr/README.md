@@ -36,21 +36,26 @@ public static class OrderErrors
 }
 ```
 
-After — one attribute per error. The members keep their type, their bodies and their call sites;
-the attribute only adds the HTTP half that ErrorOr has no place to put:
+After — one attribute per error, carrying the status and nothing else. The code is read out of the
+`code:` argument that is already there, so it is never written twice and cannot drift from what the
+document promises. The title comes from the member name read as a sentence:
 
 ```csharp
 using ErrorOr;
 
 public static class OrderErrors
 {
-    [ErrorApi.Error("Orders.NotFound", 404, Title = "Order not found")]
+    [ErrorApi.Error(404)]  // -> "Orders.NotFound", title "Not found"
     public static Error NotFound => Error.NotFound("Orders.NotFound", "No such order.");
 
-    [ErrorApi.Error("Orders.AlreadyPaid", 409, Title = "Order already paid")]
+    [ErrorApi.Error(409)]  // -> "Orders.AlreadyPaid", title "Already paid"
     public static Error AlreadyPaid => Error.Conflict("Orders.AlreadyPaid", "Already paid.");
 }
 ```
+
+Spell the code out as `[ErrorApi.Error("Orders.NotFound", 404)]` when the body has no `code:` argument
+to read, or when the documented code should differ from it. If both are present and disagree, `EAPI008`
+reports it rather than letting the document and the wire drift apart.
 
 > **Naming note.** ErrorOr and ErrorApi both ship a type called `Error`, so spell the attribute out
 > as `[ErrorApi.Error(...)]` — or add `using ErrorAttribute = ErrorApi.ErrorAttribute;` to the file and
@@ -164,7 +169,7 @@ catch (e) { if (e.status === 404) show("not found"); }
 // after: generated from the same catalog the server compiled
 export type GetOrdersByIdError = ApiProblem<"Orders.NotFound">;
 ```
-## How an error is resolved
+## How an error is resolved at runtime
 
 | Situation | Result |
 | --- | --- |

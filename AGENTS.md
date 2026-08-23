@@ -52,6 +52,11 @@ The generator does **not** reference `ErrorApi.Abstractions`. It matches attribu
    - `Declared` — a type, a field, or a member with its own body. Nothing is emitted; the entry is only
      recorded. This is what lets a catalog live in ErrorOr's, OneOf's or language-ext's error types.
      **A member is only held to the generated rules if it is marked `partial`.**
+   The wire code and the title may be inferred — see `Helpers/NameInference`. The priority is
+   explicit argument, then a `code:` literal in the member's body, then the name plus the
+   `[ErrorCatalog]` prefix. `ErrorReachabilityWalker` resolves codes through the same helper, because
+   the walk has to agree with the catalog it is walking towards; a change to one order without the
+   other silently empties endpoint contracts.
 2. **`EndpointScanner`** resolves each `Map*` call site: route template (including `MapGroup` prefixes
    followed back through locals), HTTP method, and handler expression.
 3. **`ErrorReachabilityWalker`** walks from the handler through the call graph — into source bodies, local
@@ -81,6 +86,9 @@ The generator does **not** reference `ErrorApi.Abstractions`. It matches attribu
   `DiagnosticInfo` rather than holding `ISymbol`, `SyntaxNode`, `Location` or `Diagnostic`.
 - **Generator diagnostics ignore `#pragma warning disable`.** Suppress them with `<NoWarn>` or
   `.editorconfig`, and say so when you document a rule.
+- **Code inference has exactly one implementation.** `NameInference.CodeFromBody` and
+  `CodeFromName` are shared by `CatalogParser` and `ErrorReachabilityWalker`. A symbol from a
+  referenced assembly has no body to read, so cross-assembly catalogs resolve by name only.
 - **Adapters do not depend on each other.** Each pins exactly one result library. Shared behaviour goes in
   `ErrorApi.AspNetCore` or in the generated model, never in a second adapter.
 

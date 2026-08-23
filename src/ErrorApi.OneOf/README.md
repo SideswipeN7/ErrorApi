@@ -44,6 +44,11 @@ public sealed record OrderNotFound(Guid Id);
 public sealed record OrderAlreadyPaid(Guid Id);
 ```
 
+The code and the title can be left to the generator: `[Error(404)]` alone yields the code
+`OrderNotFound` and the title `Order not found`. This README spells them out because a dotted code
+reads better in a document shared with a frontend; `[assembly: ErrorCatalog("Orders")]` puts a prefix
+in front of every inferred one.
+
 ### 2. The service
 
 **Not one line changes.** This is the part people expect to have to rewrite, and do not:
