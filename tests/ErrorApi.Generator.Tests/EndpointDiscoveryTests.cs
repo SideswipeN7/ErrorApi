@@ -20,9 +20,10 @@ public sealed class EndpointDiscoveryTests
             .Source("ErrorApi.Metadata.g.cs");
 
         // Pay -> IOrderService.Pay -> OrderService.Pay -> GetById -> Orders.NotFound
+        //                                             -> Orders.AlreadyPaid
         //                                             -> Charge  -> Billing.CardDeclined
         Assert.Contains(
-            "new global::ErrorApi.EndpointErrors(\"POST\", \"/orders/{id}/pay\", new global::ErrorApi.ErrorDescriptor[] { _errors[0], _errors[2] })",
+            "new global::ErrorApi.EndpointErrors(\"POST\", \"/orders/{id}/pay\", new global::ErrorApi.ErrorDescriptor[] { _errors[0], _errors[1], _errors[2] })",
             metadata,
             StringComparison.Ordinal);
     }

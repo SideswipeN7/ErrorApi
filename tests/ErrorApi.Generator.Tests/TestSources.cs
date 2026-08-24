@@ -53,6 +53,11 @@ public static class TestSources
                     return order.Error;
                 }
 
+                if (order.Value.Total == 0)
+                {
+                    return OrderErrors.AlreadyPaid(id);
+                }
+
                 return Charge(order.Value);
             }
 

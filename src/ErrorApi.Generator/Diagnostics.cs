@@ -60,6 +60,15 @@ internal static class Diagnostics
         isEnabledByDefault: true,
         description: "Drop the code from the attribute and let it be inferred from the body, or make the two agree.");
 
+    public static readonly DiagnosticDescriptor UnreachableError = new(
+        id: "EAPI010",
+        title: "Declared error is not returned by any endpoint",
+        messageFormat: "'{0}' is declared but no endpoint in this project can return it",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "Either the entry is dead and should go, or it is raised behind something the walk cannot follow — a generic pipeline behaviour, a handler in another assembly — in which case the endpoints that surface it need [ProducesError]. A catalog meant to be consumed by other projects should live in a project of its own, where this rule stays silent because there are no endpoints to check against.");
+
     public static readonly DiagnosticDescriptor UnresolvedDispatch = new(
         id: "EAPI009",
         title: "The walk stopped at a dispatcher",

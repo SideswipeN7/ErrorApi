@@ -74,6 +74,7 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
         var scan = EndpointScanner.Scan(compilation, mapCalls, configuration, mappedTypes, diagnostics);
         var errors = MergeErrors(entries, scan.DiscoveredErrors);
         ReportUnknownCodes(scan.Endpoints, errors, diagnostics);
+        ReportUnreachableErrors(entries, scan.Endpoints, diagnostics);
 
         foreach (var (hintName, source) in CatalogEmitter.Emit(entries))
         {
@@ -184,6 +185,43 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
         }
 
         return detail;
+    }
+
+    /// <summary>
+    /// Reports catalog entries that no endpoint can return.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Two things produce this, and they want opposite fixes: the entry is dead and should be deleted,
+    /// or it is raised behind a boundary the walk cannot cross and the endpoints need
+    /// <c>[ProducesError]</c>. The second is why this rule earns its keep — a contract that quietly lost
+    /// half its failures shows up here as codes nobody documents.
+    /// </para>
+    /// <para>
+    /// Only entries declared in this compilation are checked; one discovered through the walk is used by
+    /// definition. A compilation with no endpoints is not an API, so a shared catalog project stays quiet.
+    /// </para>
+    /// </remarks>
+    private static void ReportUnreachableErrors(
+        IReadOnlyList<CatalogEntry> entries,
+        IReadOnlyList<EndpointModel> endpoints,
+        List<DiagnosticInfo> diagnostics)
+    {
+        if (endpoints.Count == 0)
+        {
+            return;
+        }
+
+        var reachable = new HashSet<string>(
+            endpoints.SelectMany(endpoint => endpoint.ErrorCodes), System.StringComparer.Ordinal);
+
+        foreach (var entry in entries)
+        {
+            if (!reachable.Contains(entry.Code))
+            {
+                diagnostics.Add(DiagnosticInfo.Create(Diagnostics.UnreachableError, entry.Location, entry.Code));
+            }
+        }
     }
 
     private static void ReportUnknownCodes(

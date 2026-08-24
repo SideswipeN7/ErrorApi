@@ -429,6 +429,23 @@ orders.MapGet("/", [ProducesError("Common.RateLimited")] (IOrderService service)
 
 `[ProducesError]` also works on a method or a whole class, and is merged into every endpoint that reaches it.
 
+### Errors nobody can return
+
+A catalog entry that no endpoint reaches is reported as `EAPI010`, and it is worth knowing that this
+has two very different causes:
+
+- **The entry is dead.** Nothing raises it any more; delete it.
+- **The contract lost it.** It is raised behind something the walk cannot follow — a generic pipeline
+  behaviour, a handler in another assembly — so the endpoints that surface it never learned about it.
+  The fix is `[ProducesError]` on those endpoints, not deleting the entry.
+
+The second case is why the rule pays for itself: a contract that quietly lost half its failures shows
+up here as codes nobody documents. It is the signal `EAPI009` cannot give you, because that one only
+fires when an endpoint ends up with *nothing*, and a partial contract is the harder failure to notice.
+
+A project with no endpoints is not an API, so a shared catalog library stays silent — put the catalog
+in a project of its own and the rule has nothing to check it against.
+
 ### Diagnostics
 
 | ID | Severity | Meaning |
@@ -442,6 +459,7 @@ orders.MapGet("/", [ProducesError("Common.RateLimited")] (IOrderService service)
 | `EAPI007` | Warning | The handler could not be resolved to source. |
 | `EAPI008` | Warning | An explicit code disagrees with the `code:` literal in the member's body. |
 | `EAPI009` | Warning | The walk stopped at a dispatcher and the endpoint documents no failures. |
+| `EAPI010` | Warning | A declared error is not returned by any endpoint in the project. |
 
 Generator diagnostics are not suppressible with `#pragma`; tune them in `.editorconfig` or `<NoWarn>`.
 

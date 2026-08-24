@@ -149,19 +149,27 @@ public sealed class ErrorOrCodeInferenceTests
         public interface IOrderService
         {
             ErrorOr<Order> GetById(Guid id);
+            ErrorOr<Success> Pay(Guid id);
         }
 
         public sealed class OrderService : IOrderService
         {
             public ErrorOr<Order> GetById(Guid id) =>
                 id == Guid.Empty ? OrderErrors.NotFound : new Order(id);
+
+            public ErrorOr<Success> Pay(Guid id) => OrderErrors.AlreadyPaid;
         }
 
         public static class Endpoints
         {
-            public static void Map(IEndpointRouteBuilder app) =>
+            public static void Map(IEndpointRouteBuilder app)
+            {
                 app.MapGet("/orders/{id:guid}", (Guid id, IOrderService service) =>
                     ErrorApi.Interop.ErrorOrHttpExtensions.ToHttpResult(service.GetById(id)));
+
+                app.MapPost("/orders/{id:guid}/pay", (Guid id, IOrderService service) =>
+                    ErrorApi.Interop.ErrorOrHttpExtensions.ToNoContentResult(service.Pay(id)));
+            }
         }
         """;
 

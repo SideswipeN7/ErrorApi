@@ -21,7 +21,7 @@ namespace ErrorApi.Generated
         {
             new global::ErrorApi.EndpointErrors("GET", "/orders", new global::ErrorApi.ErrorDescriptor[] { _errors[2] }),
             new global::ErrorApi.EndpointErrors("GET", "/orders/{id}", new global::ErrorApi.ErrorDescriptor[] { _errors[2] }),
-            new global::ErrorApi.EndpointErrors("POST", "/orders/{id}/pay", new global::ErrorApi.ErrorDescriptor[] { _errors[0], _errors[2] }),
+            new global::ErrorApi.EndpointErrors("POST", "/orders/{id}/pay", new global::ErrorApi.ErrorDescriptor[] { _errors[0], _errors[1], _errors[2] }),
         };
 
         /// <summary>The compile-time error model of this assembly.</summary>
