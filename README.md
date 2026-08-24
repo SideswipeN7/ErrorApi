@@ -108,6 +108,23 @@ app.MapGet("/orders/{id:guid}", (Guid id, IOrderService s) => s.GetById(id).ToHt
 
 That is the whole integration. `AddErrorApi()` registers this assembly's compile-time model and hooks an `IOpenApiOperationTransformer` into every document.
 
+**Prefer `TypedResults`?** Every mapping has a typed twin that answers with `Results<…, ProblemHttpResult>`, so ASP.NET documents the success schema straight from the endpoint signature — no transformer involved on the success half:
+
+```csharp
+// GET /orders/{id} → 200 (with the Order schema) + the generator's 404
+app.MapGet("/orders/{id:guid}", Results<Ok<Order>, ProblemHttpResult> (Guid id, IOrderService s) =>
+    s.GetById(id).ToTypedResult());
+```
+
+| `IResult` form | typed twin | success arm |
+| --- | --- | --- |
+| `ToHttpResult()` on `Result<T>` | `ToTypedResult()` | `Ok<T>` |
+| `ToHttpResult()` on `Result` | `ToTypedResult()` | `NoContent` |
+| `ToCreated(...)` | `ToTypedCreated(...)` | `Created<T>` |
+| `ToCreatedAtRoute(...)` | `ToTypedCreatedAtRoute(...)` | `CreatedAtRoute<T>` |
+
+The failure arm is always `ProblemHttpResult`, which carries no static status — that is exactly the hole the generated per-endpoint contract fills, so the error half of the document is identical in both styles.
+
 ---
 
 ## No result type? Plain exceptions work

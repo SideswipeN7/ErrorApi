@@ -245,8 +245,10 @@ internal static class EndpointScanner
         outer.Length == 0 ? inner : outer.TrimEnd('/') + "/" + inner.TrimStart('/');
 
     /// <summary>
-    /// True when the handler hands back a <c>Result</c>. Endpoints that do are expected to reach at
-    /// least one catalog entry, so finding none is worth reporting; plain endpoints stay quiet.
+    /// True when the handler hands back a <c>Result</c>, or a <c>TypedResults</c> union with
+    /// <c>ProblemHttpResult</c> in it. Both shapes promise a failure path, so such an endpoint is
+    /// expected to reach at least one catalog entry and finding none is worth reporting; plain
+    /// endpoints stay quiet.
     /// </summary>
     private static bool ReturnsResult(ExpressionSyntax handler, SemanticModel model)
     {
@@ -264,7 +266,15 @@ internal static class EndpointScanner
         }
 
         var name = returnType.OriginalDefinition.ToDisplayString();
-        return name is "ErrorApi.Result" or "ErrorApi.Result<T>";
+        if (name is "ErrorApi.Result" or "ErrorApi.Result<T>")
+        {
+            return true;
+        }
+
+        // Results<Ok<T>, ProblemHttpResult> and friends: the union names a problem arm explicitly.
+        return returnType is INamedTypeSymbol { Name: "Results", IsGenericType: true } union
+            && union.ContainingNamespace.ToDisplayString() == "Microsoft.AspNetCore.Http.HttpResults"
+            && union.TypeArguments.Any(t => t.Name == "ProblemHttpResult");
     }
 
     private static string DescribeHandler(ExpressionSyntax handler, SemanticModel model)
