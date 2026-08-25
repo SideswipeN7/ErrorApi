@@ -29,6 +29,9 @@ internal sealed class ErrorReachabilityWalker
     private readonly System.Collections.Concurrent.ConcurrentDictionary<INamedTypeSymbol, List<INamedTypeSymbol>> _handlers =
         new(SymbolEqualityComparer.Default);
 
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<IAssemblySymbol, List<INamedTypeSymbol>> _pipelines =
+        new(SymbolEqualityComparer.Default);
+
     private readonly Lazy<List<INamedTypeSymbol>> _sourceTypes;
 
     public ErrorReachabilityWalker(Compilation compilation)
@@ -237,12 +240,20 @@ internal sealed class ErrorReachabilityWalker
             return;
         }
 
+        var sawMessage = false;
+
         foreach (var argument in invocation.ArgumentList.Arguments)
         {
             if (model.GetTypeInfo(argument.Expression).Type is not INamedTypeSymbol { DeclaringSyntaxReferences.Length: > 0 } message)
             {
                 continue;
             }
+
+            sawMessage = true;
+
+            // A cross-cutting failure has no better home than the message that rides through it, so the
+            // message type's own [ProducesError] counts as reached the moment it is dispatched.
+            AddDeclaredCodes(message, walk.Codes);
 
             var handlers = FindHandlersFor(message);
             if (handlers.Count == 0)
@@ -259,7 +270,51 @@ internal sealed class ErrorReachabilityWalker
                 }
             }
         }
+
+        // Every message through this dispatcher also rides its pipeline: source types generic over the
+        // request, closed only at runtime, which is exactly why following the message can never reach
+        // them. They are identified by implementing an interface from the dispatcher's own assembly
+        // whose type arguments are still type parameters — the shape of a behaviour in any library.
+        if (sawMessage && target.OriginalDefinition.ContainingAssembly is { } dispatcherAssembly)
+        {
+            foreach (var behaviour in FindPipelineTypes(dispatcherAssembly))
+            {
+                foreach (var method in behaviour.GetMembers().OfType<IMethodSymbol>())
+                {
+                    VisitMethod(method, depth + 1, walk);
+                }
+            }
+        }
     }
+
+    private List<INamedTypeSymbol> FindPipelineTypes(IAssemblySymbol dispatcherAssembly) =>
+        _pipelines.GetOrAdd(dispatcherAssembly, assembly =>
+        {
+            var result = new List<INamedTypeSymbol>();
+            foreach (var type in GetSourceTypes())
+            {
+                if (type.TypeKind is not (TypeKind.Class or TypeKind.Struct))
+                {
+                    continue;
+                }
+
+                // Generic over the request: the interface comes from the dispatcher's assembly and is
+                // constructed with the implementer's own type parameters. A handler closes the same
+                // interface with a concrete message and must NOT match here — walking it would leak
+                // one endpoint's failures into every other endpoint behind the same dispatcher.
+                var isPipeline = type.AllInterfaces.Any(i =>
+                    i.IsGenericType
+                    && SymbolEqualityComparer.Default.Equals(i.OriginalDefinition.ContainingAssembly, assembly)
+                    && i.TypeArguments.Any(a => a.TypeKind == TypeKind.TypeParameter));
+
+                if (isPipeline)
+                {
+                    result.Add(type);
+                }
+            }
+
+            return result;
+        });
 
     /// <summary>
     /// A call worth reinterpreting: dispatched through an abstraction, with no implementation in the
@@ -291,10 +346,23 @@ internal sealed class ErrorReachabilityWalker
                 continue;
             }
 
+            // The interface shape: a generic interface constructed with the message, which MediatR,
+            // Brighter and Wolverine's interface mode all share.
             var handles = type.AllInterfaces.Any(i =>
                 i.IsGenericType && i.TypeArguments.Any(a => SymbolEqualityComparer.Default.Equals(a, message)));
 
-            if (handles)
+            // The convention shape: Wolverine resolves `OrderHandler.Handle(PlaceOrder)` with no
+            // interface at all. The suffix plus the method-name convention keeps this from swallowing
+            // every method that merely takes the message as a parameter.
+            var handlesByConvention = !handles
+                && (type.Name.EndsWith("Handler", StringComparison.Ordinal)
+                    || type.Name.EndsWith("Consumer", StringComparison.Ordinal))
+                && type.GetMembers().OfType<IMethodSymbol>().Any(m =>
+                    m.Name is "Handle" or "HandleAsync" or "Consume" or "ConsumeAsync"
+                    && m.Parameters.Length > 0
+                    && SymbolEqualityComparer.Default.Equals(m.Parameters[0].Type, message));
+
+            if (handles || handlesByConvention)
             {
                 result.Add(type);
             }

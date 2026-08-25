@@ -70,13 +70,12 @@ public sealed class CancelOrderValidator : AbstractValidator<CancelOrder>
 /// <c>Common.Validation</c>.
 /// </summary>
 /// <remarks>
-/// This type is <em>generic over the request</em>, which is the whole point of a behaviour — and also
-/// the reason the generator cannot see it. Discovery bridges a dispatch through the message type, and
-/// nothing in this application ever constructs <c>ValidationBehaviour&lt;PlaceOrder, …&gt;</c>: MediatR
-/// closes the generic at runtime, from the container. So the 400 raised here reaches the client
-/// correctly but never reaches the document, unless an endpoint declares it with
-/// <c>[ProducesError]</c>. <c>Program.cs</c> does that for one of the two endpoints, so the contrast is
-/// visible in the same OpenAPI document.
+/// This type is <em>generic over the request</em>, which is the whole point of a behaviour — and the
+/// exact shape the walk looks for when it crosses a dispatcher: a source type implementing an
+/// interface from the dispatcher's own assembly whose type arguments are still type parameters.
+/// Nothing here ever constructs <c>ValidationBehaviour&lt;PlaceOrder, …&gt;</c> — MediatR closes the
+/// generic at runtime, from the container — yet the 400 thrown below reaches every dispatched
+/// endpoint's contract, because the pipeline rule does not need the closed type to exist.
 /// </remarks>
 public sealed class ValidationBehaviour<TRequest, TResponse>(IEnumerable<IValidator<TRequest>> validators)
     : IPipelineBehavior<TRequest, TResponse>

@@ -400,44 +400,48 @@ for you:
 errorapi_follow_dispatch = false
 ```
 
-When a dispatch cannot be resolved and the endpoint ends up with nothing at all, `EAPI009` says so
-rather than letting the silence look intentional.
+When a dispatch cannot be resolved, `EAPI009` says so — whether the endpoint came out empty or merely
+lost part of its contract, because a partial contract reads as complete and that is the worse failure.
 
-### What a pipeline behaviour costs you
+### Pipeline behaviours are followed too
 
-Following a message into its handler is not the same as following it through the whole pipeline, and
-the difference is worth being blunt about. `samples/Sample.Mediator.Validation.Api` is built to show it:
-a command, a FluentValidation validator, a `ValidationBehaviour<TRequest, TResponse>` that throws on
-failure, and handlers that resolve their repository from a scope of their own.
+Following a message into its handler is not the same as following it through the whole pipeline. A
+`ValidationBehaviour<TRequest, TResponse>` is generic over the request — that is the entire point of a
+behaviour — so nothing in your source ever constructs it with a concrete message, and no call chain
+leads to it. It is discovered by shape instead: crossing a dispatcher declared in assembly *M*, the
+walk also enters every source type implementing a generic interface from *M* whose type arguments are
+still type parameters. That matches behaviours exactly, and cannot match a handler — a handler closes
+the interface with a concrete message, and walking it here would leak one endpoint's failures into
+every other.
 
-What comes out of that document:
+`samples/Sample.Mediator.Validation.Api` shows it end to end: a command, a FluentValidation validator,
+a behaviour that throws an `[Error]`-annotated exception, handlers resolving their repository from a
+scope of their own — and not a single `[ProducesError]`:
 
 ```
-POST /orders                200 409          <- validation 400 is missing
-POST /orders/{id}/cancel    200 400 404 410  <- same pipeline, one [ProducesError]
+POST /orders                200 400 409
+POST /orders/{id}/cancel    200 400 404 410
 ```
 
-And what `POST /orders` actually answers with, for an invalid body:
-
-```json
-{ "title": "Request failed validation", "status": 400, "code": "Common.Validation" }
-```
-
-The response is right. The document is silent. Two things are worth separating here:
+Two more things that sample demonstrates:
 
 - **A separate scope is not a boundary.** Both handlers resolve `IOrderRepository` from a child
   container, and the 409, 404 and 410 those repositories return are all documented — the walk follows
   an interface to its implementation regardless of where the instance came from.
-- **A generic pipeline is a boundary.** `ValidationBehaviour<TRequest, TResponse>` is generic over the
-  request, which is the entire point of a behaviour. Nothing in the source constructs it with
-  `PlaceOrder`; MediatR closes the generic at runtime from the container. There is no call for the walk
-  to follow, so the failure it raises never reaches the contract.
+- **Convention handlers count.** A Wolverine-style `OrderHandler.Handle(PlaceOrder)` with no interface
+  at all is found through the message too, by the `*Handler`/`*Consumer` suffix and the
+  `Handle`/`Consume` method convention.
 
-The fix available today is `[ProducesError]` on the endpoints, as the cancel endpoint in that sample
-shows. For a cross-cutting concern that is one declaration per endpoint, which is exactly the
-duplication this project exists to remove — so treat it as a known gap, not a design.
+A cross-cutting failure can also be declared once, on the message that rides through the pipeline:
 
-When the walk cannot see the failure — it comes from a referenced assembly, or from a delegate built at runtime — declare it:
+```csharp
+[ProducesError("Common.RateLimited")]
+public sealed record PlaceOrder(string Customer, decimal Total) : IRequest<Result<OrderPlaced>>;
+```
+
+Every endpoint that dispatches the message documents the code — no per-endpoint repetition.
+
+When the walk cannot see the failure at all — it comes from a referenced assembly, or from a delegate built at runtime — declare it on the endpoint:
 
 ```csharp
 orders.MapGet("/", [ProducesError("Common.RateLimited")] (IOrderService service) =>
@@ -457,8 +461,10 @@ has two very different causes:
   The fix is `[ProducesError]` on those endpoints, not deleting the entry.
 
 The second case is why the rule pays for itself: a contract that quietly lost half its failures shows
-up here as codes nobody documents. It is the signal `EAPI009` cannot give you, because that one only
-fires when an endpoint ends up with *nothing*, and a partial contract is the harder failure to notice.
+up here as codes nobody documents. `EAPI009` approaches the same hole from the other side — it fires on
+any endpoint whose walk was stopped at a dispatcher, whether the contract came out empty or partial —
+and the two together bracket the failure: one names the endpoint that lost something, the other names
+what was lost.
 
 A project with no endpoints is not an API, so a shared catalog library stays silent — put the catalog
 in a project of its own and the rule has nothing to check it against.

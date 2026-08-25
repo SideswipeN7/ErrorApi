@@ -36,23 +36,23 @@ app.MapScalarApiReference("/scalar", options => options.WithTitle("Mediator + va
 
 var orders = app.MapGroup("/orders").WithTags("Orders");
 
-// What the generator finds here is exactly the path the code walks: Send -> PlaceOrderHandler ->
-// (its own scope) -> IOrderRepository -> InMemoryOrderRepository.Place -> Orders.DuplicateCustomer.
-// The 400 the validation behaviour raises is NOT here. MediatR closes ValidationBehaviour<,> at
-// runtime from the container, so nothing in this source constructs it with PlaceOrder, and there is no
-// call for the walk to follow. The endpoint answers 400 correctly and documents 409 only.
+// Two discovery paths meet here. Following the message: Send -> PlaceOrderHandler -> (its own scope)
+// -> IOrderRepository -> InMemoryOrderRepository.Place -> Orders.DuplicateCustomer. And following the
+// pipeline: crossing a dispatcher from MediatR's assembly, the walk also enters every source type
+// implementing a MediatR interface that is still generic over the request — which is exactly
+// ValidationBehaviour<,>, so the 400 it throws lands in this contract with no attribute anywhere.
 orders.MapPost("/", async (PlaceOrder command, ISender sender) =>
         (await sender.Send(command)).ToCreatedAtRoute("GetOrder", placed => new() { ["id"] = placed.Id }))
     .WithName("PlaceOrder")
-    .WithSummary("Places an order — the validation failure is missing from this contract");
+    .WithSummary("Places an order — 400 and 409 both discovered, no attribute");
 
-// The same pipeline, the same behaviour, one attribute. This is the fix available today: name the
-// cross-cutting failure on the endpoint. Compare the two responses lists in the document.
+// The same pipeline, and no [ProducesError] here either: both endpoints get the behaviour's 400 the
+// same way, so the two contracts stay honest without a single manual declaration.
 orders.MapPost("/{id:guid}/cancel",
-        [ProducesError("Common.Validation")] async (Guid id, CancelOrderBody body, ISender sender) =>
+        async (Guid id, CancelOrderBody body, ISender sender) =>
             (await sender.Send(new CancelOrder(id, body.Reason))).ToHttpResult())
     .WithName("CancelOrder")
-    .WithSummary("Cancels an order — declares the validation failure explicitly");
+    .WithSummary("Cancels an order — 400, 404 and 410 all discovered");
 
 // Reading one back, so CreatedAtRoute has a target and the contract has a third shape.
 orders.MapGet("/{id:guid}", (Guid id) => Results.Ok(new { id }))

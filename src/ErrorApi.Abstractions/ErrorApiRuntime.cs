@@ -8,7 +8,7 @@ namespace ErrorApi;
 /// <remarks>
 /// Adapter packages need the model inside plain extension methods such as <c>result.ToHttpResult()</c>,
 /// where there is no service provider to ask. One process hosts one set of endpoints, so a single
-/// ambient model is the honest shape; every adapter also exposes an overload taking the model explicitly.
+/// ambient model is the honest shape. Every adapter also exposes an overload taking the model explicitly.
 /// </remarks>
 public static class ErrorApiRuntime
 {
@@ -43,3 +43,4 @@ public static class ErrorApiRuntime
         return new Error(code ?? instance?.GetType().Name ?? "Unknown", fallbackStatus, fallbackTitle);
     }
 }
+

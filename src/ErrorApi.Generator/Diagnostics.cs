@@ -76,7 +76,7 @@ internal static class Diagnostics
         category: Category,
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
-        description: "An endpoint behind an unreadable dispatcher is documented as having no failures at all, which reads as deliberate. Declare them with [ProducesError], or keep the handler in the same compilation so it can be followed.");
+        description: "An endpoint behind an unreadable dispatcher loses the failures raised past it — entirely, or worse, partially, which reads as a complete contract. Declare them with [ProducesError] (on the endpoint or on the message type), or keep the handler in the same compilation so it can be followed.");
 
     public static readonly DiagnosticDescriptor NoErrorsDiscovered = new(
         id: "EAPI006",

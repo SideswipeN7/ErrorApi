@@ -78,10 +78,10 @@ internal static class EndpointScanner
                 // The same route mapped twice (for example once per feature module): union the contracts.
                 codes.UnionWith(existing.ErrorCodes);
             }
-            else if (codes.Count == 0 && item.UnresolvedDispatch is not null)
+            else if (item.UnresolvedDispatch is not null)
             {
-                // More specific than EAPI006, and the one worth reporting: the walk did not come up
-                // empty, it was stopped.
+                // A stopped walk is worth reporting whether or not something else was found first: a
+                // partial contract reads as complete, which is the worst way for it to be wrong.
                 diagnostics.Add(DiagnosticInfo.Create(
                     Diagnostics.UnresolvedDispatch, endpoint.Location, endpoint.HttpMethod, endpoint.RoutePattern, item.UnresolvedDispatch));
             }
