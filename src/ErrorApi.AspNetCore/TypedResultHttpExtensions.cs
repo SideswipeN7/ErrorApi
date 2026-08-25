@@ -30,8 +30,8 @@ public static class TypedResultHttpExtensions
     public static Results<Created<T>, ProblemHttpResult> ToTypedCreated<T>(this Result<T> result, Func<T, string> location) =>
         result.IsSuccess ? TypedResults.Created(location(result.Value), result.Value) : result.Error.ToProblem();
 
-    /// <inheritdoc cref="ResultHttpExtensions.ToCreated{T}(Result{T}, Func{T, string})"/>
-    public static Results<Created<T>, ProblemHttpResult> ToTypedCreated<T>(this Result<T> result, Func<T, Uri> location) =>
+    /// <inheritdoc cref="ResultHttpExtensions.ToCreatedAtUri{T}(Result{T}, Func{T, Uri})"/>
+    public static Results<Created<T>, ProblemHttpResult> ToTypedCreatedAtUri<T>(this Result<T> result, Func<T, Uri> location) =>
         result.IsSuccess ? TypedResults.Created(location(result.Value), result.Value) : result.Error.ToProblem();
 
     /// <inheritdoc cref="ResultHttpExtensions.ToCreatedAtRoute{T}(Result{T}, string, Func{T, RouteValueDictionary})"/>

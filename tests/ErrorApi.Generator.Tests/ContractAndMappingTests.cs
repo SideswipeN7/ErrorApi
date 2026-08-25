@@ -112,7 +112,7 @@ public sealed class CreatedMappingTests
     {
         Result<Order> result = new Order(Guid.Empty);
 
-        var created = Assert.IsType<Created<Order>>(result.ToCreated(o => new Uri($"https://api.test/orders/{o.Id}")));
+        var created = Assert.IsType<Created<Order>>(result.ToCreatedAtUri(o => new Uri($"https://api.test/orders/{o.Id}")));
 
         Assert.Equal("https://api.test/orders/00000000-0000-0000-0000-000000000000", created.Location);
     }
@@ -136,7 +136,7 @@ public sealed class CreatedMappingTests
         Result<Order> result = new Error("Orders.Invalid", 400, "Invalid order");
 
         var problem = Assert.IsType<ProblemHttpResult>(
-            result.ToCreated((Func<Order, string>)(_ => throw new InvalidOperationException("must not be called"))));
+            result.ToCreated(_ => throw new InvalidOperationException("must not be called")));
 
         Assert.Equal(400, problem.StatusCode);
     }

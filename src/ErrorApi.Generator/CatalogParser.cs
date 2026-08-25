@@ -21,6 +21,34 @@ internal static class CatalogParser
 {
     public const string ErrorAttributeName = "ErrorApi.ErrorAttribute";
     public const string ProducesErrorAttributeName = "ErrorApi.ProducesErrorAttribute";
+
+    /// <summary>
+    /// The diagnostic IDs a declaration silences with <c>[SuppressErrorApi]</c>. Generator diagnostics
+    /// ignore <c>#pragma warning</c>, so this is the per-declaration lever.
+    /// </summary>
+    public static ImmutableHashSet<string> SuppressedIds(ISymbol? symbol)
+    {
+        if (symbol is null)
+        {
+            return ImmutableHashSet<string>.Empty;
+        }
+
+        foreach (var attribute in symbol.GetAttributes())
+        {
+            if (attribute.AttributeClass is { Name: "SuppressErrorApiAttribute", ContainingNamespace: { Name: "ErrorApi" } ns }
+                && ns.ContainingNamespace.IsGlobalNamespace
+                && attribute.ConstructorArguments.Length == 1)
+            {
+                return attribute.ConstructorArguments[0].Values
+                    .Select(v => v.Value as string)
+                    .Where(v => v is not null)
+                    .Select(v => v!)
+                    .ToImmutableHashSet(System.StringComparer.Ordinal);
+            }
+        }
+
+        return ImmutableHashSet<string>.Empty;
+    }
     public const string ErrorTypeName = "ErrorApi.Error";
 
     public static ParsedCatalogEntry Parse(GeneratorAttributeSyntaxContext context)
@@ -86,6 +114,19 @@ internal static class CatalogParser
         var parsed = symbol is INamedTypeSymbol type
             ? ParseErrorType(type, node, code, statusCode, title, detail, description)
             : ParseMember(symbol, node, display, code, statusCode, title, detail, description, exportId);
+
+        var suppressed = SuppressedIds(symbol);
+        if (parsed.Entry is { } built && !suppressed.IsEmpty)
+        {
+            parsed = parsed with
+            {
+                Entry = built with
+                {
+                    Suppressions = new EquatableArray<string>(
+                        suppressed.OrderBy(s => s, System.StringComparer.Ordinal).ToImmutableArray()),
+                },
+            };
+        }
 
         return drift is null || parsed.Diagnostic is not null ? parsed : parsed with { Diagnostic = drift };
     }

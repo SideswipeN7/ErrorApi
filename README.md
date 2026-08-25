@@ -498,7 +498,7 @@ in a project of its own and the rule has nothing to check it against.
 | `EAPI009` | Warning | The walk stopped at a dispatcher and the endpoint documents no failures. |
 | `EAPI010` | Warning | A declared error is not returned by any endpoint in the project. |
 
-Generator diagnostics are not suppressible with `#pragma`; tune them in `.editorconfig` or `<NoWarn>`.
+Generator diagnostics are not suppressible with `#pragma`. For a deliberate one-off, silence the rule where it fires — `[SuppressErrorApi("EAPI010")]` on the member, or on the mapping method / handler for the endpoint rules — and keep `.editorconfig` / `<NoWarn>` for project-wide tuning.
 
 ---
 

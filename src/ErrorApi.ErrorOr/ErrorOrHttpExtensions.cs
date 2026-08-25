@@ -87,8 +87,8 @@ public static class ErrorOrHttpExtensions
     public static IResult ToCreated<TValue>(this ErrorOr<TValue> result, Func<TValue, string> location) =>
         result.IsError ? result.FirstError.ToProblem() : TypedResults.Created(location(result.Value), result.Value);
 
-    /// <inheritdoc cref="ToCreated{TValue}(ErrorOr{TValue}, Func{TValue, string})"/>
-    public static IResult ToCreated<TValue>(this ErrorOr<TValue> result, Func<TValue, Uri> location) =>
+    /// <summary>The <see cref="Uri"/> twin of the string-location form — its own name, so a throwing lambda is never ambiguous between the two.</summary>
+    public static IResult ToCreatedAtUri<TValue>(this ErrorOr<TValue> result, Func<TValue, Uri> location) =>
         result.IsError ? result.FirstError.ToProblem() : TypedResults.Created(location(result.Value), result.Value);
 
     /// <summary>

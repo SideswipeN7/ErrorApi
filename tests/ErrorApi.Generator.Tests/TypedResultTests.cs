@@ -53,7 +53,7 @@ public sealed class TypedResultMappingTests
         Result<Order> result = new Error("Orders.Invalid", 400);
 
         var problem = Assert.IsType<ProblemHttpResult>(
-            result.ToTypedCreated((Func<Order, string>)(_ => throw new InvalidOperationException("must not be called"))).Result);
+            result.ToTypedCreated(_ => throw new InvalidOperationException("must not be called")).Result);
 
         Assert.Equal(400, problem.StatusCode);
     }

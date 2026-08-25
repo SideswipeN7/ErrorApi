@@ -148,8 +148,8 @@ public static class FluentResultsHttpExtensions
     public static IResult ToCreated<TValue>(this global::FluentResults.Result<TValue> result, Func<TValue, string> location) =>
         result.IsFailed ? result.ToProblem() : TypedResults.Created(location(result.Value), result.Value);
 
-    /// <inheritdoc cref="ToCreated{TValue}(FluentResults.Result{TValue}, Func{TValue, string})"/>
-    public static IResult ToCreated<TValue>(this global::FluentResults.Result<TValue> result, Func<TValue, Uri> location) =>
+    /// <summary>The <see cref="Uri"/> twin of the string-location form — its own name, so a throwing lambda is never ambiguous between the two.</summary>
+    public static IResult ToCreatedAtUri<TValue>(this global::FluentResults.Result<TValue> result, Func<TValue, Uri> location) =>
         result.IsFailed ? result.ToProblem() : TypedResults.Created(location(result.Value), result.Value);
 
     /// <summary>

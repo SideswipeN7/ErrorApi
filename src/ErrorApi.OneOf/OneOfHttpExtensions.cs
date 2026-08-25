@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using OneOf;
@@ -45,9 +46,55 @@ public static class OneOfHttpExtensions
     public static IResult ToHttpResult<TValue, TError1, TError2, TError3>(this OneOf<TValue, TError1, TError2, TError3> result) =>
         result.Match(value => TypedResults.Ok(value), Problem, Problem, Problem);
 
+    /// <inheritdoc cref="ToHttpResult{TValue, TError1, TError2, TError3}(OneOf{TValue, TError1, TError2, TError3})"/>
+    public static IResult ToHttpResult<TValue, TError1, TError2, TError3, TError4>(
+        this OneOf<TValue, TError1, TError2, TError3, TError4> result) =>
+        result.Match(value => TypedResults.Ok(value), Problem, Problem, Problem, Problem);
+
+    /// <inheritdoc cref="ToHttpResult{TValue, TError1, TError2, TError3}(OneOf{TValue, TError1, TError2, TError3})"/>
+    public static IResult ToHttpResult<TValue, TError1, TError2, TError3, TError4, TError5>(
+        this OneOf<TValue, TError1, TError2, TError3, TError4, TError5> result) =>
+        result.Match(value => TypedResults.Ok(value), Problem, Problem, Problem, Problem, Problem);
+
+    /// <inheritdoc cref="ToHttpResult{TValue, TError1, TError2, TError3}(OneOf{TValue, TError1, TError2, TError3})"/>
+    public static IResult ToHttpResult<TValue, TError1, TError2, TError3, TError4, TError5, TError6>(
+        this OneOf<TValue, TError1, TError2, TError3, TError4, TError5, TError6> result) =>
+        result.Match(value => TypedResults.Ok(value), Problem, Problem, Problem, Problem, Problem, Problem);
+
+    /// <inheritdoc cref="ToHttpResult{TValue, TError1, TError2, TError3}(OneOf{TValue, TError1, TError2, TError3})"/>
+    public static IResult ToHttpResult<TValue, TError1, TError2, TError3, TError4, TError5, TError6, TError7>(
+        this OneOf<TValue, TError1, TError2, TError3, TError4, TError5, TError6, TError7> result) =>
+        result.Match(value => TypedResults.Ok(value), Problem, Problem, Problem, Problem, Problem, Problem, Problem);
+
+    /// <inheritdoc cref="ToHttpResult{TValue, TError}(OneOf{TValue, TError})"/>
+    public static async Task<IResult> ToHttpResult<TValue, TError>(this Task<OneOf<TValue, TError>> result) =>
+        (await result.ConfigureAwait(false)).ToHttpResult();
+
+    /// <inheritdoc cref="ToHttpResult{TValue, TError1, TError2}(OneOf{TValue, TError1, TError2})"/>
+    public static async Task<IResult> ToHttpResult<TValue, TError1, TError2>(this Task<OneOf<TValue, TError1, TError2>> result) =>
+        (await result.ConfigureAwait(false)).ToHttpResult();
+
+    /// <inheritdoc cref="ToHttpResult{TValue, TError1, TError2, TError3}(OneOf{TValue, TError1, TError2, TError3})"/>
+    public static async Task<IResult> ToHttpResult<TValue, TError1, TError2, TError3>(
+        this Task<OneOf<TValue, TError1, TError2, TError3>> result) =>
+        (await result.ConfigureAwait(false)).ToHttpResult();
+
+    /// <inheritdoc cref="ToHttpResult{TValue, TError}(OneOf{TValue, TError})"/>
+    public static async ValueTask<IResult> ToHttpResult<TValue, TError>(this ValueTask<OneOf<TValue, TError>> result) =>
+        (await result.ConfigureAwait(false)).ToHttpResult();
+
+    /// <inheritdoc cref="ToHttpResult{TValue, TError1, TError2}(OneOf{TValue, TError1, TError2})"/>
+    public static async ValueTask<IResult> ToHttpResult<TValue, TError1, TError2>(
+        this ValueTask<OneOf<TValue, TError1, TError2>> result) =>
+        (await result.ConfigureAwait(false)).ToHttpResult();
+
     /// <summary>Maps the success case to <c>204 No Content</c> and the failure case to <c>ProblemDetails</c>.</summary>
     public static IResult ToNoContentResult<TValue, TError>(this OneOf<TValue, TError> result) =>
         result.Match(_ => TypedResults.NoContent(), Problem);
+
+    /// <inheritdoc cref="ToNoContentResult{TValue, TError}(OneOf{TValue, TError})"/>
+    public static async Task<IResult> ToNoContentResult<TValue, TError>(this Task<OneOf<TValue, TError>> result) =>
+        (await result.ConfigureAwait(false)).ToNoContentResult();
 
     /// <summary>Maps the success case to <c>201 Created</c> at a fixed location, and the failure case to <c>ProblemDetails</c>.</summary>
     public static IResult ToCreated<TValue, TError>(this OneOf<TValue, TError> result, string location) =>
@@ -67,8 +114,8 @@ public static class OneOfHttpExtensions
     public static IResult ToCreated<TValue, TError>(this OneOf<TValue, TError> result, Func<TValue, string> location) =>
         result.Match(value => TypedResults.Created(location(value), value), Problem);
 
-    /// <inheritdoc cref="ToCreated{TValue, TError}(OneOf{TValue, TError}, Func{TValue, string})"/>
-    public static IResult ToCreated<TValue, TError>(this OneOf<TValue, TError> result, Func<TValue, Uri> location) =>
+    /// <summary>The <see cref="Uri"/> twin of the string-location form — its own name, so a throwing lambda is never ambiguous between the two.</summary>
+    public static IResult ToCreatedAtUri<TValue, TError>(this OneOf<TValue, TError> result, Func<TValue, Uri> location) =>
         result.Match(value => TypedResults.Created(location(value), value), Problem);
 
     /// <inheritdoc cref="ToCreated{TValue, TError}(OneOf{TValue, TError}, Func{TValue, string})"/>

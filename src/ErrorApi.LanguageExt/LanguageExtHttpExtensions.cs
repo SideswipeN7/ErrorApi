@@ -89,8 +89,8 @@ public static class LanguageExtHttpExtensions
     public static IResult ToCreated<TValue>(this Fin<TValue> result, Func<TValue, string> location) =>
         result.Match(value => (IResult)TypedResults.Created(location(value), value), error => error.ToProblem());
 
-    /// <inheritdoc cref="ToCreated{TValue}(Fin{TValue}, Func{TValue, string})"/>
-    public static IResult ToCreated<TValue>(this Fin<TValue> result, Func<TValue, Uri> location) =>
+    /// <summary>The <see cref="Uri"/> twin of the string-location form — its own name, so a throwing lambda is never ambiguous between the two.</summary>
+    public static IResult ToCreatedAtUri<TValue>(this Fin<TValue> result, Func<TValue, Uri> location) =>
         result.Match(value => (IResult)TypedResults.Created(location(value), value), error => error.ToProblem());
 
     /// <summary>

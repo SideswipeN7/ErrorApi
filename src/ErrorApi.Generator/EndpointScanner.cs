@@ -82,10 +82,13 @@ internal static class EndpointScanner
             {
                 // A stopped walk is worth reporting whether or not something else was found first: a
                 // partial contract reads as complete, which is the worst way for it to be wrong.
-                diagnostics.Add(DiagnosticInfo.Create(
-                    Diagnostics.UnresolvedDispatch, endpoint.Location, endpoint.HttpMethod, endpoint.RoutePattern, item.UnresolvedDispatch));
+                if (!item.Suppressed.Contains(Diagnostics.UnresolvedDispatch.Id))
+                {
+                    diagnostics.Add(DiagnosticInfo.Create(
+                        Diagnostics.UnresolvedDispatch, endpoint.Location, endpoint.HttpMethod, endpoint.RoutePattern, item.UnresolvedDispatch));
+                }
             }
-            else if (codes.Count == 0 && item.HandlerReturnsResult)
+            else if (codes.Count == 0 && item.HandlerReturnsResult && !item.Suppressed.Contains(Diagnostics.NoErrorsDiscovered.Id))
             {
                 diagnostics.Add(DiagnosticInfo.Create(
                     Diagnostics.NoErrorsDiscovered, endpoint.Location, endpoint.HttpMethod, endpoint.RoutePattern));
@@ -111,6 +114,7 @@ internal static class EndpointScanner
         EndpointModel? Endpoint,
         string? UnresolvedDispatch,
         bool HandlerReturnsResult,
+        ImmutableHashSet<string> Suppressed,
         List<DiagnosticInfo> Diagnostics);
 
     /// <summary>Reads one candidate invocation. Runs concurrently with the others; touches no shared state.</summary>
@@ -148,11 +152,20 @@ internal static class EndpointScanner
 
         var diagnostics = new List<DiagnosticInfo>();
 
+        // [SuppressErrorApi] on the mapping method or on the handler: generator diagnostics ignore
+        // #pragma, so this is the per-endpoint lever.
+        var enclosing = invocation.Ancestors().OfType<BaseMethodDeclarationSyntax>().FirstOrDefault();
+        var suppressed = CatalogParser.SuppressedIds(enclosing is null ? null : model.GetDeclaredSymbol(enclosing));
+
         var declaredPattern = model.GetConstantValue(arguments[0].Expression);
         if (!declaredPattern.HasValue || declaredPattern.Value is not string patternText)
         {
-            diagnostics.Add(DiagnosticInfo.Create(Diagnostics.NonLiteralRoute, arguments[0].Expression));
-            return new ScannedEndpoint(null, null, false, diagnostics);
+            if (!suppressed.Contains(Diagnostics.NonLiteralRoute.Id))
+            {
+                diagnostics.Add(DiagnosticInfo.Create(Diagnostics.NonLiteralRoute, arguments[0].Expression));
+            }
+
+            return new ScannedEndpoint(null, null, false, suppressed, diagnostics);
         }
 
         if (member.Name.Identifier.ValueText == "MapMethods")
@@ -164,7 +177,11 @@ internal static class EndpointScanner
         var route = RouteNormalizer.Combine(prefix, patternText);
         var handler = arguments[arguments.Count - 1].Expression;
 
-        if (!ErrorReachabilityWalker.IsResolvable(handler, model))
+        var handlerInfo = model.GetSymbolInfo(handler);
+        suppressed = suppressed.Union(
+            CatalogParser.SuppressedIds(handlerInfo.Symbol ?? handlerInfo.CandidateSymbols.FirstOrDefault()));
+
+        if (!ErrorReachabilityWalker.IsResolvable(handler, model) && !suppressed.Contains(Diagnostics.UnresolvedHandler.Id))
         {
             diagnostics.Add(DiagnosticInfo.Create(Diagnostics.UnresolvedHandler, invocation, httpMethod, route));
         }
@@ -184,6 +201,7 @@ internal static class EndpointScanner
             endpoint,
             walk.UnresolvedDispatches.FirstOrDefault(),
             ReturnsResult(handler, model),
+            suppressed,
             diagnostics);
     }
 

@@ -245,7 +245,7 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
 
         foreach (var entry in entries)
         {
-            if (!reachable.Contains(entry.Code))
+            if (!reachable.Contains(entry.Code) && !entry.Suppressions.Contains(Diagnostics.UnreachableError.Id))
             {
                 diagnostics.Add(DiagnosticInfo.Create(Diagnostics.UnreachableError, entry.Location, entry.Code));
             }

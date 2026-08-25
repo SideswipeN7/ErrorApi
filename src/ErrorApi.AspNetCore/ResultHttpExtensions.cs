@@ -76,8 +76,12 @@ public static class ResultHttpExtensions
     public static IResult ToCreated<T>(this Result<T> result, Func<T, string> location) =>
         result.IsSuccess ? TypedResults.Created(location(result.Value), result.Value) : result.Error.ToProblem();
 
-    /// <inheritdoc cref="ToCreated{T}(Result{T}, Func{T, string})"/>
-    public static IResult ToCreated<T>(this Result<T> result, Func<T, Uri> location) =>
+    /// <summary>
+    /// The <see cref="Uri"/> twin of <see cref="ToCreated{T}(Result{T}, Func{T, string})"/>. Its own
+    /// name rather than an overload, because a lambda that throws or returns a target-typed expression
+    /// would otherwise be ambiguous between the string and Uri shapes.
+    /// </summary>
+    public static IResult ToCreatedAtUri<T>(this Result<T> result, Func<T, Uri> location) =>
         result.IsSuccess ? TypedResults.Created(location(result.Value), result.Value) : result.Error.ToProblem();
 
     /// <summary>
