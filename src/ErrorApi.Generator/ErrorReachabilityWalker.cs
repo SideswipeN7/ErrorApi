@@ -19,29 +19,23 @@ internal sealed class ErrorReachabilityWalker
     private const int MaxDepth = 12;
 
     private readonly Compilation _compilation;
-    private readonly Dictionary<SyntaxTree, SemanticModel> _models = new();
-    private readonly Dictionary<INamedTypeSymbol, List<INamedTypeSymbol>> _implementations =
+
+    // One walker serves every endpoint, and the scanner walks endpoints in parallel — everything an
+    // individual Collect can touch is either concurrent or per-call state.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<SyntaxTree, SemanticModel> _models = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<INamedTypeSymbol, List<INamedTypeSymbol>> _implementations =
         new(SymbolEqualityComparer.Default);
 
-    private readonly Dictionary<INamedTypeSymbol, List<INamedTypeSymbol>> _handlers =
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<INamedTypeSymbol, List<INamedTypeSymbol>> _handlers =
         new(SymbolEqualityComparer.Default);
 
-    private List<INamedTypeSymbol>? _sourceTypes;
+    private readonly Lazy<List<INamedTypeSymbol>> _sourceTypes;
 
-    public ErrorReachabilityWalker(Compilation compilation) => _compilation = compilation;
-
-    /// <summary>
-    /// Whether to follow a message past a dispatcher it cannot read, such as a mediator's <c>Send</c>.
-    /// </summary>
-    public bool FollowDispatch { get; set; } = true;
-
-    /// <summary>
-    /// Calls the last <see cref="Collect"/> could not see past. A mediator, a message bus or any other
-    /// indirection whose implementation lives outside the compilation ends the walk, and an endpoint
-    /// behind one is documented as having no failures at all — which is worse than being wrong, because
-    /// it looks deliberate. <c>EndpointScanner</c> turns these into <c>EAPI009</c>.
-    /// </summary>
-    public List<string> UnresolvedDispatches { get; } = new();
+    public ErrorReachabilityWalker(Compilation compilation)
+    {
+        _compilation = compilation;
+        _sourceTypes = new Lazy<List<INamedTypeSymbol>>(CollectSourceTypes, isThreadSafe: true);
+    }
 
     /// <summary>
     /// Wire codes for types declared through <c>[assembly: ErrorMapping]</c>, keyed by fully qualified
@@ -55,36 +49,60 @@ internal sealed class ErrorReachabilityWalker
     /// Every <c>[Error]</c> declaration met while walking, keyed by code. Entries coming from a
     /// referenced assembly land here too, so an app can document a catalog it does not declare itself.
     /// </summary>
-    public Dictionary<string, DiscoveredError> Discovered { get; } = new(StringComparer.Ordinal);
+    public System.Collections.Concurrent.ConcurrentDictionary<string, DiscoveredError> Discovered { get; } =
+        new(StringComparer.Ordinal);
 
     /// <summary>Collects the error codes reachable from a handler expression: a lambda or a method group.</summary>
-    public SortedSet<string> Collect(SyntaxNode handlerNode, SemanticModel model)
+    /// <param name="handlerNode">The handler expression: a lambda or a method group.</param>
+    /// <param name="model">The semantic model of the tree the handler lives in.</param>
+    /// <param name="followDispatch">
+    /// Whether to follow a message past a dispatcher it cannot read, such as a mediator's <c>Send</c>.
+    /// </param>
+    public CollectResult Collect(SyntaxNode handlerNode, SemanticModel model, bool followDispatch = true)
     {
-        var codes = new SortedSet<string>(StringComparer.Ordinal);
-        var visited = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
-
-        UnresolvedDispatches.Clear();
+        var walk = new Walk(
+            new SortedSet<string>(StringComparer.Ordinal),
+            new HashSet<ISymbol>(SymbolEqualityComparer.Default),
+            new List<string>(),
+            followDispatch);
 
         if (handlerNode is AnonymousFunctionExpressionSyntax lambda)
         {
             if (model.GetSymbolInfo(lambda).Symbol is IMethodSymbol lambdaSymbol)
             {
-                AddDeclaredCodes(lambdaSymbol, codes);
+                AddDeclaredCodes(lambdaSymbol, walk.Codes);
             }
 
-            VisitNode(lambda, 0, codes, visited);
-            return codes;
+            VisitNode(lambda, 0, walk);
+            return new CollectResult(walk.Codes, walk.UnresolvedDispatches);
         }
 
         var info = model.GetSymbolInfo(handlerNode);
         var symbol = info.Symbol ?? info.CandidateSymbols.FirstOrDefault();
         if (symbol is IMethodSymbol method)
         {
-            VisitMethod(method, 0, codes, visited);
+            VisitMethod(method, 0, walk);
         }
 
-        return codes;
+        return new CollectResult(walk.Codes, walk.UnresolvedDispatches);
     }
+
+    /// <summary>What one endpoint's walk found, and where it was stopped.</summary>
+    /// <param name="Codes">The catalog codes reachable from the handler.</param>
+    /// <param name="UnresolvedDispatches">
+    /// Calls this walk could not see past. A mediator, a message bus or any other indirection whose
+    /// implementation lives outside the compilation ends the walk, and an endpoint behind one is
+    /// documented as having no failures at all — which is worse than being wrong, because it looks
+    /// deliberate. <c>EndpointScanner</c> turns these into <c>EAPI009</c>.
+    /// </param>
+    public sealed record CollectResult(SortedSet<string> Codes, List<string> UnresolvedDispatches);
+
+    /// <summary>The per-Collect state one walk threads through its visits.</summary>
+    private sealed record Walk(
+        SortedSet<string> Codes,
+        HashSet<ISymbol> Visited,
+        List<string> UnresolvedDispatches,
+        bool FollowDispatch);
 
     /// <summary>True when the handler expression resolves to something the walker can actually read.</summary>
     public static bool IsResolvable(SyntaxNode handlerNode, SemanticModel model)
@@ -99,7 +117,7 @@ internal sealed class ErrorReachabilityWalker
         return symbol is IMethodSymbol { DeclaringSyntaxReferences.Length: > 0 };
     }
 
-    private void VisitMethod(IMethodSymbol method, int depth, SortedSet<string> codes, HashSet<ISymbol> visited)
+    private void VisitMethod(IMethodSymbol method, int depth, Walk walk)
     {
         if (depth > MaxDepth)
         {
@@ -107,33 +125,33 @@ internal sealed class ErrorReachabilityWalker
         }
 
         method = method.OriginalDefinition;
-        if (!visited.Add(method))
+        if (!walk.Visited.Add(method))
         {
             return;
         }
 
-        AddDeclaredCodes(method, codes);
+        AddDeclaredCodes(method, walk.Codes);
 
         if (method.ContainingType is { } containingType)
         {
-            AddDeclaredCodes(containingType, codes);
+            AddDeclaredCodes(containingType, walk.Codes);
 
             if (containingType.TypeKind == TypeKind.Interface || method.IsAbstract || method.IsVirtual)
             {
                 foreach (var implementation in FindImplementations(method))
                 {
-                    VisitMethod(implementation, depth, codes, visited);
+                    VisitMethod(implementation, depth, walk);
                 }
             }
         }
 
         foreach (var reference in method.DeclaringSyntaxReferences)
         {
-            VisitNode(reference.GetSyntax(), depth, codes, visited);
+            VisitNode(reference.GetSyntax(), depth, walk);
         }
     }
 
-    private void VisitNode(SyntaxNode root, int depth, SortedSet<string> codes, HashSet<ISymbol> visited)
+    private void VisitNode(SyntaxNode root, int depth, Walk walk)
     {
         if (depth > MaxDepth || !_compilation.ContainsSyntaxTree(root.SyntaxTree))
         {
@@ -153,12 +171,12 @@ internal sealed class ErrorReachabilityWalker
 
                 if (TryGetErrorCode(target, out var invokedCode))
                 {
-                    codes.Add(invokedCode!);
+                    walk.Codes.Add(invokedCode!);
                 }
                 else
                 {
-                    VisitMethod(target, depth + 1, codes, visited);
-                    VisitDispatchTargets(invocation, target, model, depth, codes, visited);
+                    VisitMethod(target, depth + 1, walk);
+                    VisitDispatchTargets(invocation, target, model, depth, walk);
                 }
             }
             else if (node is BaseObjectCreationExpressionSyntax creation)
@@ -170,7 +188,7 @@ internal sealed class ErrorReachabilityWalker
 
                 if (created is not null && (TryGetErrorCode(created, out var typeCode) || TryGetMappedCode(created, out typeCode)))
                 {
-                    codes.Add(typeCode!);
+                    walk.Codes.Add(typeCode!);
                 }
             }
             else if (node is IdentifierNameSyntax or MemberAccessExpressionSyntax)
@@ -178,7 +196,7 @@ internal sealed class ErrorReachabilityWalker
                 var referenced = model.GetSymbolInfo(node).Symbol;
                 if (referenced is IPropertySymbol or IFieldSymbol && TryGetErrorCode(referenced, out var memberCode))
                 {
-                    codes.Add(memberCode!);
+                    walk.Codes.Add(memberCode!);
                 }
             }
         }
@@ -209,13 +227,12 @@ internal sealed class ErrorReachabilityWalker
         IMethodSymbol target,
         SemanticModel model,
         int depth,
-        SortedSet<string> codes,
-        HashSet<ISymbol> visited)
+        Walk walk)
     {
         // Only a call the walk could not follow is worth reinterpreting as a dispatch. The question is
         // not whether the callee has source — an interface declared right here has plenty — but whether
         // there is an implementation to step into.
-        if (!FollowDispatch || depth > MaxDepth || !IsUnresolvedDispatchShape(target))
+        if (!walk.FollowDispatch || depth > MaxDepth || !IsUnresolvedDispatchShape(target))
         {
             return;
         }
@@ -230,7 +247,7 @@ internal sealed class ErrorReachabilityWalker
             var handlers = FindHandlersFor(message);
             if (handlers.Count == 0)
             {
-                UnresolvedDispatches.Add(target.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat));
+                walk.UnresolvedDispatches.Add(target.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat));
                 continue;
             }
 
@@ -238,7 +255,7 @@ internal sealed class ErrorReachabilityWalker
             {
                 foreach (var method in handler.GetMembers().OfType<IMethodSymbol>())
                 {
-                    VisitMethod(method, depth + 1, codes, visited);
+                    VisitMethod(method, depth + 1, walk);
                 }
             }
         }
@@ -351,14 +368,11 @@ internal sealed class ErrorReachabilityWalker
         return false;
     }
 
-    private List<INamedTypeSymbol> GetSourceTypes()
-    {
-        if (_sourceTypes is not null)
-        {
-            return _sourceTypes;
-        }
+    private List<INamedTypeSymbol> GetSourceTypes() => _sourceTypes.Value;
 
-        _sourceTypes = new List<INamedTypeSymbol>();
+    private List<INamedTypeSymbol> CollectSourceTypes()
+    {
+        var types = new List<INamedTypeSymbol>();
         var queue = new Queue<INamespaceOrTypeSymbol>();
         queue.Enqueue(_compilation.Assembly.GlobalNamespace);
 
@@ -372,31 +386,35 @@ internal sealed class ErrorReachabilityWalker
                 }
                 else if (member is INamedTypeSymbol type)
                 {
-                    _sourceTypes.Add(type);
+                    types.Add(type);
                     queue.Enqueue(type);
                 }
             }
         }
 
-        return _sourceTypes;
+        return types;
     }
 
-    private SemanticModel GetModel(SyntaxTree tree)
-    {
-        if (!_models.TryGetValue(tree, out var model))
-        {
-            model = _compilation.GetSemanticModel(tree);
-            _models[tree] = model;
-        }
+    private SemanticModel GetModel(SyntaxTree tree) =>
+        _models.GetOrAdd(tree, t => _compilation.GetSemanticModel(t));
 
-        return model;
-    }
+    /// <summary>
+    /// Cheap attribute identity check: the short name first (a string the symbol already holds), the
+    /// namespace only on a name match. Building a display string per attribute per visited symbol is
+    /// where a whole-compilation walk goes to die.
+    /// </summary>
+    private static bool IsErrorApiAttribute(AttributeData attribute, string shortName) =>
+        attribute.AttributeClass is { } cls
+        && cls.Name == shortName
+        && cls.ContainingNamespace is { IsGlobalNamespace: false } ns
+        && ns.Name == "ErrorApi"
+        && ns.ContainingNamespace.IsGlobalNamespace;
 
     private static void AddDeclaredCodes(ISymbol symbol, SortedSet<string> codes)
     {
         foreach (var attribute in symbol.GetAttributes())
         {
-            if (attribute.AttributeClass?.ToDisplayString() == CatalogParser.ProducesErrorAttributeName
+            if (IsErrorApiAttribute(attribute, "ProducesErrorAttribute")
                 && attribute.ConstructorArguments.Length > 0
                 && attribute.ConstructorArguments[0].Value is string code)
             {
@@ -414,7 +432,7 @@ internal sealed class ErrorReachabilityWalker
 
         foreach (var attribute in definition.GetAttributes())
         {
-            if (attribute.AttributeClass?.ToDisplayString() != CatalogParser.ErrorAttributeName)
+            if (!IsErrorApiAttribute(attribute, "ErrorAttribute"))
             {
                 continue;
             }

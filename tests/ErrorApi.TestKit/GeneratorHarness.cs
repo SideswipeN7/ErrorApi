@@ -93,6 +93,38 @@ public static class GeneratorHarness
             updated.GetDiagnostics().Where(d => d.Severity >= DiagnosticSeverity.Warning).ToImmutableArray());
     }
 
+    /// <summary>
+    /// Runs the generator, applies <paramref name="edit"/> to the compilation, runs again on the same
+    /// driver, and hands back the second run with step tracking on — which is how a test watches what
+    /// an edit did or did not invalidate.
+    /// </summary>
+    public static GeneratorRunResult RunTwice(string[] sources, Func<CSharpCompilation, CSharpCompilation> edit)
+    {
+        var trees = sources
+            .Select((text, index) => CSharpSyntaxTree.ParseText(text, ParseOptions, path: $"Source{index}.cs"))
+            .ToImmutableArray();
+
+        var compilation = CSharpCompilation.Create(
+            "ErrorApi.GeneratorTests.Subject",
+            trees,
+            References,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
+
+        var driver = (GeneratorDriver)CSharpGeneratorDriver.Create(
+            [new ErrorApiGenerator().AsSourceGenerator()],
+            parseOptions: ParseOptions,
+            driverOptions: new GeneratorDriverOptions(IncrementalGeneratorOutputKind.None, trackIncrementalGeneratorSteps: true));
+
+        driver = driver.RunGenerators(compilation);
+        driver = driver.RunGenerators(edit(compilation));
+
+        return driver.GetRunResult().Results.Single();
+    }
+
+    /// <summary>Parses one more source with the harness's parse options, for use with <see cref="RunTwice"/>.</summary>
+    public static Microsoft.CodeAnalysis.SyntaxTree ParseTree(string source, string path) =>
+        CSharpSyntaxTree.ParseText(source, ParseOptions, path: path);
+
     /// <summary>Runs the generator and fails unless the resulting compilation is error-free.</summary>
     public static GeneratorOutput RunAndCompile(params string[] sources)
     {

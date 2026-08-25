@@ -21,6 +21,9 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
     private const string MetadataInterfaceName = "ErrorApi.IErrorApiMetadata";
     private const string RegistrationTypeName = "ErrorApi.AspNetCore.ErrorApiRegistration";
 
+    /// <summary>The tracking name of the model stage, so tests can watch it cache.</summary>
+    public const string ModelStepName = "ErrorApi.Model";
+
     /// <inheritdoc />
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -42,22 +45,27 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
         var input = context.CompilationProvider.Combine(catalog).Combine(mapCalls)
             .Combine(context.AnalyzerConfigOptionsProvider);
 
-        context.RegisterSourceOutput(
-            input,
-            static (spc, data) => Execute(spc, data.Left.Left.Left, data.Left.Left.Right, data.Left.Right, data.Right));
+        // The walk has to see the whole compilation, so it re-runs on every edit — but it funnels into
+        // one value-equatable model here, which means an edit that does not change the outcome leaves
+        // the emit step cached: no re-added sources, no re-parsed generated files in the IDE.
+        var model = input.Select(static (data, cancellationToken) =>
+                Build(data.Left.Left.Left, data.Left.Left.Right, data.Left.Right, data.Right, cancellationToken))
+            .WithTrackingName(ModelStepName);
+
+        context.RegisterSourceOutput(model, static (spc, result) => Emit(spc, result));
     }
 
-    private static void Execute(
-        SourceProductionContext context,
+    private static GenerationModel Build(
         Compilation compilation,
         ImmutableArray<ParsedCatalogEntry> parsed,
         ImmutableArray<InvocationExpressionSyntax> mapCalls,
-        AnalyzerConfigOptionsProvider configuration)
+        AnalyzerConfigOptionsProvider configuration,
+        System.Threading.CancellationToken cancellationToken)
     {
         if (compilation.GetTypeByMetadataName(MetadataInterfaceName) is null)
         {
             // ErrorApi.Abstractions is not referenced; there is nothing this generator can legally emit.
-            return;
+            return GenerationModel.Empty;
         }
 
         var diagnostics = new List<DiagnosticInfo>();
@@ -71,24 +79,44 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
             .GroupBy(e => e.ErrorTypeDisplay!, System.StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.First().Code, System.StringComparer.Ordinal);
 
-        var scan = EndpointScanner.Scan(compilation, mapCalls, configuration, mappedTypes, diagnostics);
+        var scan = EndpointScanner.Scan(compilation, mapCalls, configuration, mappedTypes, diagnostics, cancellationToken);
         var errors = MergeErrors(entries, scan.DiscoveredErrors);
         ReportUnknownCodes(scan.Endpoints, errors, diagnostics);
         ReportUnreachableErrors(entries, scan.Endpoints, diagnostics);
+
+        return new GenerationModel(
+            HasAbstractions: true,
+            HasRegistrationType: compilation.GetTypeByMetadataName(RegistrationTypeName) is not null,
+            Entries: entries.ToEquatableArray(),
+            Errors: errors.ToEquatableArray(),
+            Endpoints: scan.Endpoints.ToEquatableArray(),
+            Diagnostics: diagnostics.ToEquatableArray());
+    }
+
+    private static void Emit(SourceProductionContext context, GenerationModel model)
+    {
+        if (!model.HasAbstractions)
+        {
+            return;
+        }
+
+        var entries = model.Entries.AsImmutableArray();
 
         foreach (var (hintName, source) in CatalogEmitter.Emit(entries))
         {
             context.AddSource(hintName, source);
         }
 
-        context.AddSource(MetadataEmitter.HintName, MetadataEmitter.Emit(errors, scan.Endpoints, entries));
+        context.AddSource(
+            MetadataEmitter.HintName,
+            MetadataEmitter.Emit(model.Errors.AsImmutableArray(), model.Endpoints.AsImmutableArray(), entries));
 
-        if (compilation.GetTypeByMetadataName(RegistrationTypeName) is not null)
+        if (model.HasRegistrationType)
         {
             context.AddSource(MetadataEmitter.RegistrationHintName, MetadataEmitter.EmitRegistration());
         }
 
-        foreach (var diagnostic in diagnostics)
+        foreach (var diagnostic in model.Diagnostics)
         {
             context.ReportDiagnostic(diagnostic.ToDiagnostic());
         }

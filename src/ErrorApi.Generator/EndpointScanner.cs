@@ -16,7 +16,6 @@ namespace ErrorApi.Generator;
 /// </summary>
 internal static class EndpointScanner
 {
-    private const string EndpointRouteBuilderInterface = "Microsoft.AspNetCore.Routing.IEndpointRouteBuilder";
     private const int MaxPrefixDepth = 8;
 
     private static readonly Dictionary<string, string> MethodByName = new()
@@ -38,82 +37,61 @@ internal static class EndpointScanner
         IReadOnlyList<InvocationExpressionSyntax> candidates,
         AnalyzerConfigOptionsProvider configuration,
         IReadOnlyDictionary<string, string> mappedTypes,
-        List<DiagnosticInfo> diagnostics)
+        List<DiagnosticInfo> diagnostics,
+        System.Threading.CancellationToken cancellationToken = default)
     {
         var walker = new ErrorReachabilityWalker(compilation) { MappedTypes = mappedTypes };
         var models = new Dictionary<(string Method, string Route), EndpointModel>();
 
-        foreach (var invocation in candidates)
+        // Binding an endpoint statement — the Map* overload resolution plus the handler body — is where
+        // this generator's time goes, and endpoints are independent of each other: semantic models are
+        // thread-safe and the walker keeps only concurrent or per-Collect state. The results land in an
+        // indexed array and are merged sequentially below, so diagnostics and route unions come out in
+        // the same order a sequential scan produced.
+        var scanned = new ScannedEndpoint?[candidates.Count];
+
+        System.Threading.Tasks.Parallel.For(
+            0,
+            candidates.Count,
+            new System.Threading.Tasks.ParallelOptions { CancellationToken = cancellationToken },
+            index => scanned[index] = ScanCandidate(compilation, candidates[index], configuration, walker));
+
+        foreach (var item in scanned)
         {
-            if (!compilation.ContainsSyntaxTree(invocation.SyntaxTree))
+            if (item is null)
             {
                 continue;
             }
 
-            var model = compilation.GetSemanticModel(invocation.SyntaxTree);
-            if (model.GetSymbolInfo(invocation).Symbol is not IMethodSymbol symbol
-                || !IsEndpointMapping(symbol)
-                || !MethodByName.TryGetValue(symbol.Name, out var httpMethod))
+            item.Diagnostics.ForEach(diagnostics.Add);
+
+            if (item.Endpoint is not { } endpoint)
             {
                 continue;
             }
 
-            var arguments = invocation.ArgumentList.Arguments;
-            if (arguments.Count < 2)
-            {
-                continue;
-            }
-
-            var declaredPattern = model.GetConstantValue(arguments[0].Expression);
-            if (!declaredPattern.HasValue || declaredPattern.Value is not string patternText)
-            {
-                diagnostics.Add(DiagnosticInfo.Create(Diagnostics.NonLiteralRoute, arguments[0].Expression));
-                continue;
-            }
-
-            if (symbol.Name == "MapMethods")
-            {
-                httpMethod = ReadHttpMethods(arguments[1].Expression, model);
-            }
-
-            var prefix = ResolvePrefix(GetReceiver(invocation), model, 0);
-            var route = RouteNormalizer.Combine(prefix, patternText);
-            var handler = arguments[arguments.Count - 1].Expression;
-
-            if (!ErrorReachabilityWalker.IsResolvable(handler, model))
-            {
-                diagnostics.Add(DiagnosticInfo.Create(Diagnostics.UnresolvedHandler, invocation, httpMethod, route));
-            }
-
-            walker.FollowDispatch = FollowsDispatch(configuration, invocation.SyntaxTree);
-
-            var codes = walker.Collect(handler, model);
-            var unresolved = walker.UnresolvedDispatches.FirstOrDefault();
-            var key = (httpMethod, route);
+            var codes = new SortedSet<string>(endpoint.ErrorCodes, System.StringComparer.Ordinal);
+            var key = (endpoint.HttpMethod, endpoint.RoutePattern);
 
             if (models.TryGetValue(key, out var existing))
             {
                 // The same route mapped twice (for example once per feature module): union the contracts.
                 codes.UnionWith(existing.ErrorCodes);
             }
-            else if (codes.Count == 0 && unresolved is not null)
+            else if (codes.Count == 0 && item.UnresolvedDispatch is not null)
             {
                 // More specific than EAPI006, and the one worth reporting: the walk did not come up
                 // empty, it was stopped.
-                diagnostics.Add(DiagnosticInfo.Create(Diagnostics.UnresolvedDispatch, invocation, httpMethod, route, unresolved));
+                diagnostics.Add(DiagnosticInfo.Create(
+                    Diagnostics.UnresolvedDispatch, endpoint.Location, endpoint.HttpMethod, endpoint.RoutePattern, item.UnresolvedDispatch));
             }
-            else if (codes.Count == 0 && ReturnsResult(handler, model))
+            else if (codes.Count == 0 && item.HandlerReturnsResult)
             {
-                diagnostics.Add(DiagnosticInfo.Create(Diagnostics.NoErrorsDiscovered, invocation, httpMethod, route));
+                diagnostics.Add(DiagnosticInfo.Create(
+                    Diagnostics.NoErrorsDiscovered, endpoint.Location, endpoint.HttpMethod, endpoint.RoutePattern));
             }
 
-            models[key] = new EndpointModel(
-                HttpMethod: httpMethod,
-                RoutePattern: route,
-                DeclaredPattern: patternText,
-                HandlerDisplay: DescribeHandler(handler, model),
-                ErrorCodes: new EquatableArray<string>(codes.ToImmutableArray()),
-                Location: LocationInfo.From(invocation));
+            models[key] = endpoint with { ErrorCodes = new EquatableArray<string>(codes.ToImmutableArray()) };
         }
 
         var endpoints = models.Values
@@ -128,6 +106,86 @@ internal static class EndpointScanner
         return new ScanResult(endpoints, discovered);
     }
 
+    /// <summary>What one candidate invocation contributed: possibly an endpoint, possibly diagnostics.</summary>
+    private sealed record ScannedEndpoint(
+        EndpointModel? Endpoint,
+        string? UnresolvedDispatch,
+        bool HandlerReturnsResult,
+        List<DiagnosticInfo> Diagnostics);
+
+    /// <summary>Reads one candidate invocation. Runs concurrently with the others; touches no shared state.</summary>
+    private static ScannedEndpoint? ScanCandidate(
+        Compilation compilation,
+        InvocationExpressionSyntax invocation,
+        AnalyzerConfigOptionsProvider configuration,
+        ErrorReachabilityWalker walker)
+    {
+        if (!compilation.ContainsSyntaxTree(invocation.SyntaxTree))
+        {
+            return null;
+        }
+
+        // The name and the receiver's type identify the call. Resolving the full invocation would mean
+        // overload resolution against the Minimal API Delegate overloads for every endpoint.
+        if (invocation.Expression is not MemberAccessExpressionSyntax member
+            || !MethodByName.TryGetValue(member.Name.Identifier.ValueText, out var httpMethod))
+        {
+            return null;
+        }
+
+        var arguments = invocation.ArgumentList.Arguments;
+        if (arguments.Count < 2)
+        {
+            return null;
+        }
+
+        var model = compilation.GetSemanticModel(invocation.SyntaxTree);
+        if (model.GetTypeInfo(member.Expression).Type is not { } receiverType
+            || !ImplementsEndpointRouteBuilder(receiverType))
+        {
+            return null;
+        }
+
+        var diagnostics = new List<DiagnosticInfo>();
+
+        var declaredPattern = model.GetConstantValue(arguments[0].Expression);
+        if (!declaredPattern.HasValue || declaredPattern.Value is not string patternText)
+        {
+            diagnostics.Add(DiagnosticInfo.Create(Diagnostics.NonLiteralRoute, arguments[0].Expression));
+            return new ScannedEndpoint(null, null, false, diagnostics);
+        }
+
+        if (member.Name.Identifier.ValueText == "MapMethods")
+        {
+            httpMethod = ReadHttpMethods(arguments[1].Expression, model);
+        }
+
+        var prefix = ResolvePrefix(GetReceiver(invocation), model, 0);
+        var route = RouteNormalizer.Combine(prefix, patternText);
+        var handler = arguments[arguments.Count - 1].Expression;
+
+        if (!ErrorReachabilityWalker.IsResolvable(handler, model))
+        {
+            diagnostics.Add(DiagnosticInfo.Create(Diagnostics.UnresolvedHandler, invocation, httpMethod, route));
+        }
+
+        var walk = walker.Collect(handler, model, FollowsDispatch(configuration, invocation.SyntaxTree));
+
+        var endpoint = new EndpointModel(
+            HttpMethod: httpMethod,
+            RoutePattern: route,
+            DeclaredPattern: patternText,
+            HandlerDisplay: DescribeHandler(handler, model),
+            ErrorCodes: new EquatableArray<string>(walk.Codes.ToImmutableArray()),
+            Location: LocationInfo.From(invocation));
+
+        return new ScannedEndpoint(
+            endpoint,
+            walk.UnresolvedDispatches.FirstOrDefault(),
+            ReturnsResult(handler, model),
+            diagnostics);
+    }
+
     /// <summary>
     /// Reads <c>errorapi_follow_dispatch</c> from .editorconfig. A heuristic without an off switch is a
     /// liability; following a message into its handler is on unless a project says otherwise.
@@ -137,20 +195,14 @@ internal static class EndpointScanner
         || !bool.TryParse(value, out var enabled)
         || enabled;
 
-    private static bool IsEndpointMapping(IMethodSymbol symbol)
-    {
-        if (!symbol.IsExtensionMethod)
-        {
-            return false;
-        }
-
-        var receiver = symbol.ReceiverType ?? symbol.ReducedFrom?.Parameters.FirstOrDefault()?.Type;
-        return receiver is not null && ImplementsEndpointRouteBuilder(receiver);
-    }
-
     private static bool ImplementsEndpointRouteBuilder(ITypeSymbol type) =>
-        type.ToDisplayString() == EndpointRouteBuilderInterface
-        || type.AllInterfaces.Any(i => i.ToDisplayString() == EndpointRouteBuilderInterface);
+        IsEndpointRouteBuilder(type) || type.AllInterfaces.Any(IsEndpointRouteBuilder);
+
+    private static bool IsEndpointRouteBuilder(ITypeSymbol type) =>
+        type is INamedTypeSymbol { Name: "IEndpointRouteBuilder", ContainingNamespace: { Name: "Routing" } routing }
+        && routing.ContainingNamespace is { Name: "AspNetCore" } aspnet
+        && aspnet.ContainingNamespace is { Name: "Microsoft" } microsoft
+        && microsoft.ContainingNamespace.IsGlobalNamespace;
 
     private static string ReadHttpMethods(ExpressionSyntax expression, SemanticModel model)
     {
