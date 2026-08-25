@@ -63,7 +63,10 @@ public static class GeneratorHarness
         new(LanguageVersion.Latest, documentationMode: DocumentationMode.None);
 
     /// <summary>Runs the generator over <paramref name="sources"/>.</summary>
-    public static GeneratorOutput Run(params string[] sources)
+    public static GeneratorOutput Run(params string[] sources) => Run([], sources);
+
+    /// <summary>Runs the generator over <paramref name="sources"/> with additional references in scope.</summary>
+    public static GeneratorOutput Run(IReadOnlyList<MetadataReference> extraReferences, params string[] sources)
     {
         var trees = sources
             .Select((text, index) => CSharpSyntaxTree.ParseText(text, ParseOptions, path: $"Source{index}.cs"))
@@ -72,7 +75,7 @@ public static class GeneratorHarness
         var compilation = CSharpCompilation.Create(
             "ErrorApi.GeneratorTests.Subject",
             trees,
-            References,
+            References.AddRange(extraReferences),
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
 
         var driver = CSharpGeneratorDriver
@@ -124,6 +127,42 @@ public static class GeneratorHarness
     /// <summary>Parses one more source with the harness's parse options, for use with <see cref="RunTwice"/>.</summary>
     public static Microsoft.CodeAnalysis.SyntaxTree ParseTree(string source, string path) =>
         CSharpSyntaxTree.ParseText(source, ParseOptions, path: path);
+
+    /// <summary>
+    /// Compiles <paramref name="sources"/> — with the generator applied, so exports and generated
+    /// members are baked in — and hands the result back as a metadata reference. This is how a test
+    /// stands in for a catalog shipped as a NuGet package: the consumer sees attributes and signatures,
+    /// never bodies.
+    /// </summary>
+    public static MetadataReference CompileToReference(string assemblyName, params string[] sources)
+    {
+        var trees = sources
+            .Select((text, index) => CSharpSyntaxTree.ParseText(text, ParseOptions, path: $"{assemblyName}{index}.cs"))
+            .ToImmutableArray();
+
+        var compilation = CSharpCompilation.Create(
+            assemblyName,
+            trees,
+            References,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
+
+        CSharpGeneratorDriver
+            .Create([new ErrorApiGenerator().AsSourceGenerator()], parseOptions: ParseOptions)
+            .RunGeneratorsAndUpdateCompilation(compilation, out var updated, out _);
+
+        using var stream = new MemoryStream();
+        var emit = updated.Emit(stream);
+        if (!emit.Success)
+        {
+            throw new InvalidOperationException(
+                "The referenced library does not compile:\n" +
+                string.Join("\n", emit.Diagnostics
+                    .Where(d => d.Severity == DiagnosticSeverity.Error)
+                    .Select(d => $"  {d.Id}: {d.GetMessage()}")));
+        }
+
+        return MetadataReference.CreateFromImage(stream.ToArray());
+    }
 
     /// <summary>Runs the generator and fails unless the resulting compilation is error-free.</summary>
     public static GeneratorOutput RunAndCompile(params string[] sources)

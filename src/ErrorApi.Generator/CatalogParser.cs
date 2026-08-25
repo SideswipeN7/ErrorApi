@@ -80,9 +80,12 @@ internal static class CatalogParser
             ? DiagnosticInfo.Create(Diagnostics.CodeDisagreesWithBody, node, declaredCode, bodyCode)
             : null;
 
+        // A body-inferred code cannot be re-derived from metadata, so it is exported for consumers.
+        var exportId = declaredCode is null && bodyCode is not null ? symbol.GetDocumentationCommentId() : null;
+
         var parsed = symbol is INamedTypeSymbol type
             ? ParseErrorType(type, node, code, statusCode, title, detail, description)
-            : ParseMember(symbol, node, display, code, statusCode, title, detail, description);
+            : ParseMember(symbol, node, display, code, statusCode, title, detail, description, exportId);
 
         return drift is null || parsed.Diagnostic is not null ? parsed : parsed with { Diagnostic = drift };
     }
@@ -127,7 +130,7 @@ internal static class CatalogParser
     }
 
     private static ParsedCatalogEntry ParseMember(
-        ISymbol symbol, SyntaxNode node, string display, string code, int statusCode, string? title, string? detail, string? description)
+        ISymbol symbol, SyntaxNode node, string display, string code, int statusCode, string? title, string? detail, string? description, string? exportId)
     {
         var member = node as MemberDeclarationSyntax
                      ?? node.Ancestors().OfType<MemberDeclarationSyntax>().FirstOrDefault();
@@ -163,7 +166,8 @@ internal static class CatalogParser
                     Parameters: EquatableArray<ParameterModel>.Empty,
                     DeclaringMember: symbol.ToDisplayString(FullMemberFormat),
                     ErrorTypeDisplay: null,
-                    Location: LocationInfo.From(node)),
+                    Location: LocationInfo.From(node),
+                    ExportId: exportId),
                 null);
         }
 

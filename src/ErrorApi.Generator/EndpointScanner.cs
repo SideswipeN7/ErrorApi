@@ -169,7 +169,8 @@ internal static class EndpointScanner
             diagnostics.Add(DiagnosticInfo.Create(Diagnostics.UnresolvedHandler, invocation, httpMethod, route));
         }
 
-        var walk = walker.Collect(handler, model, FollowsDispatch(configuration, invocation.SyntaxTree));
+        var options = configuration.GetOptions(invocation.SyntaxTree);
+        var walk = walker.Collect(handler, model, FollowsDispatch(options), WalkDepth(options));
 
         var endpoint = new EndpointModel(
             HttpMethod: httpMethod,
@@ -190,10 +191,21 @@ internal static class EndpointScanner
     /// Reads <c>errorapi_follow_dispatch</c> from .editorconfig. A heuristic without an off switch is a
     /// liability; following a message into its handler is on unless a project says otherwise.
     /// </summary>
-    private static bool FollowsDispatch(AnalyzerConfigOptionsProvider configuration, SyntaxTree tree) =>
-        !configuration.GetOptions(tree).TryGetValue("errorapi_follow_dispatch", out var value)
+    private static bool FollowsDispatch(AnalyzerConfigOptions options) =>
+        !options.TryGetValue("errorapi_follow_dispatch", out var value)
         || !bool.TryParse(value, out var enabled)
         || enabled;
+
+    /// <summary>
+    /// Reads <c>errorapi_walk_depth</c> from .editorconfig. Twelve is generous for an endpoint, but an
+    /// unusually layered application should be able to say so instead of losing its deepest failures.
+    /// </summary>
+    private static int WalkDepth(AnalyzerConfigOptions options) =>
+        options.TryGetValue("errorapi_walk_depth", out var value)
+        && int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var depth)
+        && depth > 0
+            ? depth
+            : ErrorReachabilityWalker.DefaultMaxDepth;
 
     private static bool ImplementsEndpointRouteBuilder(ITypeSymbol type) =>
         IsEndpointRouteBuilder(type) || type.AllInterfaces.Any(IsEndpointRouteBuilder);

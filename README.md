@@ -197,6 +197,12 @@ is nothing in your source to follow, so name it on the endpoints that surface it
 payments.MapPost("/", [ProducesError("Payments.GatewayTimeout")] (IPaymentService s) => s.Charge().ToHttpResult());
 ```
 
+Or by type, which reads as what it is and survives a rename of the code:
+
+```csharp
+payments.MapPost("/", [ProducesError(typeof(GatewayTimeoutException))] (IPaymentService s) => s.Charge().ToHttpResult());
+```
+
 That is the trade the mapping buys: the code is defined once instead of per endpoint, and `EAPI005`
 stops firing because it is now a real catalog entry.
 
@@ -230,8 +236,10 @@ public static class OrderErrors
 }
 ```
 
-A symbol from a referenced assembly has no body to read, so a catalog other assemblies consume should
-not lean on rule 2 — spell the code out, or let it come from the name.
+A symbol from a referenced assembly has no body to read, so rule 2 cannot be re-applied by a consumer —
+which is why the generator bakes every body-inferred resolution into the declaring assembly as
+`[assembly: CatalogExport(...)]` and reads it back through the reference. The declaring assembly's
+resolution is authoritative everywhere; nothing drifts, and nothing needs to be spelled twice.
 
 ---
 
@@ -612,4 +620,4 @@ Working on this repository with a coding agent? [`AGENTS.md`](AGENTS.md) is the 
 - Interface dispatch resolves against the implementations *in the compilation*. A handler wired to an implementation that lives in another assembly needs `[ProducesError]`.
 - Following a message past a dispatcher is a heuristic. It matches: a source type implementing a generic interface constructed with the message; a `*Handler`/`*Consumer` type with a `Handle`/`Consume` method taking the message (Wolverine's convention); and source types generic over the request implementing an interface from the dispatcher's assembly (pipeline behaviours). A handler resolved some other way — by name, by a registry — is still not found, and `EAPI009` reports it, on partial contracts too.
 - Endpoints are matched by normalized route template plus HTTP method, so two endpoints that differ only by metadata (host, version header) share one entry.
-- The call walk is bounded at a depth of 12, which is generous for an endpoint but not unlimited.
+- The call walk is bounded at a depth of 12 by default; an unusually layered application can raise it with `errorapi_walk_depth = 20` in `.editorconfig`.

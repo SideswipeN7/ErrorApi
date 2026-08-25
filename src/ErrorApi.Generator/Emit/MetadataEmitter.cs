@@ -34,6 +34,13 @@ internal static class MetadataEmitter
         var writer = new SourceWriter();
         GeneratedFileHeader.Write(writer);
 
+        // Body-inferred codes cannot be re-derived from metadata by a consuming compilation, so the
+        // resolution is baked into the assembly and read back through the reference.
+        foreach (var entry in errorTypes.Where(e => e.ExportId is not null).OrderBy(e => e.Code, System.StringComparer.Ordinal))
+        {
+            writer.Line($"[assembly: global::ErrorApi.CatalogExport({SourceWriter.Literal(entry.ExportId)}, {SourceWriter.Literal(entry.Code)})]");
+        }
+
         using (writer.Block("namespace ErrorApi.Generated"))
         {
             writer.Line("/// <summary>The error catalog and endpoint contract of this assembly, as seen by the compiler.</summary>");

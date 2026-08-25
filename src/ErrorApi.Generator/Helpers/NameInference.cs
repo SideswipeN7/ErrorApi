@@ -95,6 +95,14 @@ internal static class NameInference
             return declared;
         }
 
+        // A referenced catalog resolved its body-inferred codes when it was compiled and exported the
+        // result; reading that back is the only way this compilation can agree with what is on the wire.
+        if (!SymbolEqualityComparer.Default.Equals(symbol.ContainingAssembly, compilation.Assembly)
+            && ExportedCode(symbol) is { } exported)
+        {
+            return exported;
+        }
+
         foreach (var reference in symbol.DeclaringSyntaxReferences)
         {
             var node = reference.GetSyntax();
@@ -105,6 +113,37 @@ internal static class NameInference
         }
 
         return CodeFromName(symbol, symbol is INamedTypeSymbol);
+    }
+
+    /// <summary>The code the symbol's own assembly exported for it, if any.</summary>
+    private static string? ExportedCode(ISymbol symbol)
+    {
+        if (symbol.ContainingAssembly is not { } assembly)
+        {
+            return null;
+        }
+
+        string? memberId = null;
+
+        foreach (var attribute in assembly.GetAttributes())
+        {
+            if (attribute.AttributeClass is not { Name: "CatalogExportAttribute" } cls
+                || cls.ContainingNamespace is not { Name: "ErrorApi" } ns
+                || !ns.ContainingNamespace.IsGlobalNamespace
+                || attribute.ConstructorArguments.Length != 2)
+            {
+                continue;
+            }
+
+            memberId ??= symbol.GetDocumentationCommentId();
+            if (attribute.ConstructorArguments[0].Value is string id && id == memberId
+                && attribute.ConstructorArguments[1].Value is string code)
+            {
+                return code;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

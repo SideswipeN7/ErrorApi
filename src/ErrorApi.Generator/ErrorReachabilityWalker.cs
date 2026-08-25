@@ -16,7 +16,8 @@ namespace ErrorApi.Generator;
 /// </summary>
 internal sealed class ErrorReachabilityWalker
 {
-    private const int MaxDepth = 12;
+    /// <summary>Default bound of the call walk; override per project with errorapi_walk_depth.</summary>
+    public const int DefaultMaxDepth = 12;
 
     private readonly Compilation _compilation;
 
@@ -61,13 +62,14 @@ internal sealed class ErrorReachabilityWalker
     /// <param name="followDispatch">
     /// Whether to follow a message past a dispatcher it cannot read, such as a mediator's <c>Send</c>.
     /// </param>
-    public CollectResult Collect(SyntaxNode handlerNode, SemanticModel model, bool followDispatch = true)
+    public CollectResult Collect(SyntaxNode handlerNode, SemanticModel model, bool followDispatch = true, int maxDepth = DefaultMaxDepth)
     {
         var walk = new Walk(
             new SortedSet<string>(StringComparer.Ordinal),
             new HashSet<ISymbol>(SymbolEqualityComparer.Default),
             new List<string>(),
-            followDispatch);
+            followDispatch,
+            maxDepth);
 
         if (handlerNode is AnonymousFunctionExpressionSyntax lambda)
         {
@@ -105,7 +107,8 @@ internal sealed class ErrorReachabilityWalker
         SortedSet<string> Codes,
         HashSet<ISymbol> Visited,
         List<string> UnresolvedDispatches,
-        bool FollowDispatch);
+        bool FollowDispatch,
+        int MaxDepth);
 
     /// <summary>True when the handler expression resolves to something the walker can actually read.</summary>
     public static bool IsResolvable(SyntaxNode handlerNode, SemanticModel model)
@@ -122,7 +125,7 @@ internal sealed class ErrorReachabilityWalker
 
     private void VisitMethod(IMethodSymbol method, int depth, Walk walk)
     {
-        if (depth > MaxDepth)
+        if (depth > walk.MaxDepth)
         {
             return;
         }
@@ -156,7 +159,7 @@ internal sealed class ErrorReachabilityWalker
 
     private void VisitNode(SyntaxNode root, int depth, Walk walk)
     {
-        if (depth > MaxDepth || !_compilation.ContainsSyntaxTree(root.SyntaxTree))
+        if (depth > walk.MaxDepth || !_compilation.ContainsSyntaxTree(root.SyntaxTree))
         {
             return;
         }
@@ -235,7 +238,7 @@ internal sealed class ErrorReachabilityWalker
         // Only a call the walk could not follow is worth reinterpreting as a dispatch. The question is
         // not whether the callee has source — an interface declared right here has plenty — but whether
         // there is an implementation to step into.
-        if (!walk.FollowDispatch || depth > MaxDepth || !IsUnresolvedDispatchShape(target))
+        if (!walk.FollowDispatch || depth > walk.MaxDepth || !IsUnresolvedDispatchShape(target))
         {
             return;
         }
@@ -478,15 +481,26 @@ internal sealed class ErrorReachabilityWalker
         && ns.Name == "ErrorApi"
         && ns.ContainingNamespace.IsGlobalNamespace;
 
-    private static void AddDeclaredCodes(ISymbol symbol, SortedSet<string> codes)
+    private void AddDeclaredCodes(ISymbol symbol, SortedSet<string> codes)
     {
         foreach (var attribute in symbol.GetAttributes())
         {
-            if (IsErrorApiAttribute(attribute, "ProducesErrorAttribute")
-                && attribute.ConstructorArguments.Length > 0
-                && attribute.ConstructorArguments[0].Value is string code)
+            if (!IsErrorApiAttribute(attribute, "ProducesErrorAttribute") || attribute.ConstructorArguments.Length == 0)
+            {
+                continue;
+            }
+
+            var argument = attribute.ConstructorArguments[0];
+            if (argument.Value is string code)
             {
                 codes.Add(code);
+            }
+            else if (argument.Value is INamedTypeSymbol errorType
+                     && (TryGetErrorCode(errorType, out var typeCode) || TryGetMappedCode(errorType, out typeCode)))
+            {
+                // [ProducesError(typeof(StripeException))]: the type is the identity, and the catalog
+                // already knows it — through its own [Error] or an assembly-level mapping.
+                codes.Add(typeCode!);
             }
         }
     }

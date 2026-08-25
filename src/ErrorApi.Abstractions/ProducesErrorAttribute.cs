@@ -13,6 +13,17 @@ public sealed class ProducesErrorAttribute : Attribute
     /// <param name="code">A code declared elsewhere with <see cref="ErrorAttribute"/>.</param>
     public ProducesErrorAttribute(string code) => Code = code;
 
-    /// <summary>The declared error code.</summary>
-    public string Code { get; }
+    /// <summary>
+    /// Declares the failure by its type instead of its code: an <c>[Error]</c>-annotated type, or one
+    /// mapped with <c>[assembly: ErrorMapping]</c>. The natural form for an exception a library throws —
+    /// <c>[ProducesError(typeof(StripeException))]</c> reads as what it is, and survives a rename.
+    /// </summary>
+    /// <param name="errorType">The type identifying the failure.</param>
+    public ProducesErrorAttribute(Type errorType) => ErrorType = errorType;
+
+    /// <summary>The declared error code, when declared by code.</summary>
+    public string? Code { get; }
+
+    /// <summary>The type identifying the failure, when declared by type.</summary>
+    public Type? ErrorType { get; }
 }
