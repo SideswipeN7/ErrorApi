@@ -14,11 +14,12 @@ public sealed class ErrorApiExceptionOptions
 {
     /// <summary>
     /// Whether <see cref="System.Exception.Message"/> becomes <c>ProblemDetails.detail</c> when the catalog
-    /// entry does not carry one. On by default: only exception types you annotated yourself are handled at
-    /// all, so their messages are already written for a client. Turn it off if your domain exceptions carry
-    /// text you would rather not put on the wire.
+    /// entry does not carry one. Off by default: an exception message is written for an operator, and even
+    /// on a type you annotated yourself it can pick up connection strings, paths and inner-exception text
+    /// on the way up. Opt in when your annotated exceptions compose their messages for clients — or, better,
+    /// put the client-facing text in the entry's <c>Detail</c>, where it is documented too.
     /// </summary>
-    public bool UseExceptionMessageAsDetail { get; set; } = true;
+    public bool UseExceptionMessageAsDetail { get; set; }
 }
 
 /// <summary>

@@ -190,18 +190,17 @@ carrying the message, which is deliberately unhelpful as a contract — because 
 ### More than one error
 
 A FluentResults result can carry several. **The first one decides the status and the code**, because
-that is what keeps the response matching the document that listed them. The rest are dropped by default:
-the documented schema promises `code` and `status`, and adding a member that is in neither would break
-the one guarantee this project exists to make.
-
-Where accumulated validation failures matter more than that, opt in:
+that is what keeps the response matching the document that listed them. The rest are dropped by
+default — secondary failures are usually noise a client cannot act on. Where accumulated validation
+failures matter, opt in:
 
 ```csharp
 FluentResultsHttpExtensions.IncludeAllErrors = true;
 ```
 
-Each further error is then listed under an `errors` extension member. It is not part of the documented
-schema, and the README says so rather than pretending otherwise.
+Each further error is then listed under an `errors` extension member — an optional field documented in
+both the OpenAPI problem schema and the TypeScript `ApiProblem` type, so opting in stays inside the
+contract.
 
 ## What you get
 

@@ -158,7 +158,7 @@ application's exception handling is not something a call by that name should do 
 
 ```csharp
 builder.Services.AddErrorApi();
-builder.Services.AddErrorApiExceptionHandler();
+builder.Services.AddErrorApiExceptionHandler(o => o.UseExceptionMessageAsDetail = true);
 
 var app = builder.Build();
 app.UseExceptionHandler();
@@ -170,8 +170,9 @@ app.UseExceptionHandler();
 
 The body comes from the same `Error.ToProblem()` the result path uses, so a client cannot tell which
 style the server was written in. An exception the catalog does not know is left untouched, so whatever
-handled it before still does. `Exception.Message` becomes `detail` unless you turn that off with
-`AddErrorApiExceptionHandler(o => o.UseExceptionMessageAsDetail = false)`.
+handled it before still does. `Exception.Message` stays off the wire unless you opt in with
+`AddErrorApiExceptionHandler(o => o.UseExceptionMessageAsDetail = true)` — messages are written for
+operators, and the entry's `Detail` is the documented place for client-facing text.
 
 ---
 

@@ -47,9 +47,10 @@ public static class FluentResultsHttpExtensions
     /// Whether a result carrying more than one error adds an <c>errors</c> member listing the rest.
     /// </summary>
     /// <remarks>
-    /// Off by default, because the documented schema says <c>code</c> and <c>status</c> and this adds a
-    /// member that is in neither — and "what the document promises is what the client gets" is the point
-    /// of this project. Turn it on where accumulated validation failures matter more than that.
+    /// Off by default: the first error alone decides the status and the code, and secondary failures are
+    /// usually noise a client cannot act on. Turning it on stays inside the contract — <c>errors</c> is
+    /// documented as an optional member in both the OpenAPI problem schema and the TypeScript
+    /// <c>ApiProblem</c> type.
     /// </remarks>
     public static bool IncludeAllErrors { get; set; }
 

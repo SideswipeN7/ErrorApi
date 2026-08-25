@@ -58,6 +58,8 @@ public static class TypeScriptContractWriter
           detail?: string;
           type?: string;
           instance?: string;
+          /** Secondary failures accompanying the primary one, when the server attaches them. */
+          errors?: { code: ApiErrorCode; detail?: string | null }[];
         }
 
         /** Narrows an unknown response body to a problem document. */

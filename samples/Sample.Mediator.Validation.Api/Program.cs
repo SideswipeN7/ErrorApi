@@ -12,8 +12,9 @@ builder.Services.AddProblemDetails();
 builder.Services.AddErrorApi();
 
 // The exception the validation behaviour throws is an annotated type, so the handler answers it with
-// the documented problem shape. The response is right even where the document is silent.
-builder.Services.AddErrorApiExceptionHandler();
+// the documented problem shape. The validation messages are composed for clients, so putting them in
+// `detail` is a deliberate opt-in.
+builder.Services.AddErrorApiExceptionHandler(o => o.UseExceptionMessageAsDetail = true);
 
 builder.Services.AddMediatR(c => c.RegisterServicesFromAssemblyContaining<PlaceOrder>());
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehaviour<,>));

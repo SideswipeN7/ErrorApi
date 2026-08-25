@@ -118,6 +118,21 @@ public sealed class ErrorApiOperationTransformer : IOpenApiOperationTransformer
                     Description = "Stable machine-readable error code. Switch on this, not on the message.",
                     Enum = codes,
                 },
+                ["errors"] = new OpenApiSchema
+                {
+                    Type = JsonSchemaType.Array,
+                    Description = "Secondary failures accompanying the primary one, when the server attaches them.",
+                    Items = new OpenApiSchema
+                    {
+                        Type = JsonSchemaType.Object,
+                        Properties = new Dictionary<string, IOpenApiSchema>(StringComparer.Ordinal)
+                        {
+                            ["code"] = new OpenApiSchema { Type = JsonSchemaType.String },
+                            ["detail"] = new OpenApiSchema { Type = JsonSchemaType.String },
+                        },
+                        Required = new HashSet<string>(StringComparer.Ordinal) { "code" },
+                    },
+                },
             },
             Required = new HashSet<string>(StringComparer.Ordinal) { "status", "code" },
         };
