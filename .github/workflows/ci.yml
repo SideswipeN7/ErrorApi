@@ -34,6 +34,19 @@ jobs:
           path: tests/**/Snapshots/*.received.txt
           if-no-files-found: ignore
 
+      # nuget.org renders markdown only — no raw HTML, no SVG, no repo-relative paths — so the packaged
+      # copy of each README swaps the local <img> header for a markdown image with an absolute PNG URL.
+      # Rewriting here rather than in the checked-in files keeps the images working while browsing the
+      # repository itself.
+      - name: Prepare package READMEs
+        shell: bash
+        run: |
+          # The root README backs the core packages; the adapters ship their own.
+          sed -i '1s|.*logo\.svg.*|![ErrorApi](https://raw.githubusercontent.com/SideswipeN7/ErrorApi/main/docs/images/logo-mark.png)|' README.md
+          for f in src/*/README.md; do
+            sed -i '1s|.*logo\.svg.*|![ErrorApi](https://raw.githubusercontent.com/SideswipeN7/ErrorApi/main/docs/images/logo-mark.png)|' "$f"
+          done
+
       - name: Pack
         run: dotnet pack ErrorApi.slnx --no-build -c Release -o artifacts
 

@@ -172,17 +172,13 @@ example — say so plainly instead of inventing a convention.
 
 ## Before publishing to NuGet
 
-README images use **repository-relative** paths, because that is what renders on GitHub while the
-repository is private. nuget.org cannot resolve a relative path, so a package page would show broken
-images. As part of a release — on the release branch, not on main — rewrite them to absolute raw URLs,
-which requires the repository to be public:
-
-```bash
-sed -i 's|docs/images/|https://raw.githubusercontent.com/SideswipeN7/ErrorApi/main/docs/images/|g' README.md
-```
-
-The adapter READMEs use `../../docs/images/` and need the same treatment. Doing it on main instead
-breaks the images for whoever is reading the repository.
+nuget.org renders package READMEs as markdown only — raw HTML is stripped, SVG is not an allowed image
+format, and repo-relative paths cannot resolve. The CI **Pack** job therefore rewrites the first line
+of every packaged README (the `<img …logo.svg…>` header) into a markdown image pointing at the raster
+logo, `docs/images/logo-mark.png`, by absolute raw URL. Nothing needs doing by hand — but the raw URL
+only resolves once the repository is public, so make it public (or accept a broken logo on the package
+page) before pushing to nuget.org. The checked-in files keep the HTML header because that is what
+renders best on GitHub itself.
 
 ## Things that will bite you
 
@@ -198,3 +194,9 @@ breaks the images for whoever is reading the repository.
   build failure in `ErrorApi.AspNetCore` before any test runs.
 - `EAPI002` fires on `MapErrorContract`'s parameterised route by design; it is suppressed via `<NoWarn>`
   in that project only.
+- On the maintainer's machine, Windows Smart App Control sometimes blocks a **freshly built** DLL from
+  loading (`0x800711C7`, "Zasady kontroli aplikacji zablokowały ten plik") — tests then fail in bulk
+  with `FileLoadException`, most often on `ErrorApi.Abstractions.dll`. The verdict is per file hash and
+  looks random. Fix: append a blank line to any source file of the blocked project, rebuild, retry —
+  a new hash usually passes on the first attempt. Never mistake this for a real test failure, and do
+  not try to change the policy.
