@@ -97,3 +97,4 @@ internal static class Diagnostics
         description: "The generator follows the handler delegate into source; handlers coming from another assembly or from a runtime-built delegate are opaque to it.");
 }
 
+

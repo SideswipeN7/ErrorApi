@@ -149,3 +149,4 @@ public static class ResultHttpExtensions
     public static async ValueTask<IResult> ToHttpResult(this ValueTask<Result> result) =>
         (await result.ConfigureAwait(false)).ToHttpResult();
 }
+
