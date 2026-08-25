@@ -59,8 +59,13 @@ dotnet run --project samples/Sample.Mediator.Api     # :5085, endpoints behind M
 dotnet run --project samples/Sample.FluentResults.Api  # :5086
 ```
 
-One more stands apart, and deliberately does **not** produce the same contract — it exists to show
-where the walk stops. See [what a pipeline behaviour costs you](#what-a-pipeline-behaviour-costs-you).
+```bash
+dotnet run --project samples/Sample.Wolverine.Api    # :5088, convention handlers, no interfaces
+```
+
+One more runs the same pipeline through MediatR with a FluentValidation behaviour — and documents the
+behaviour's 400 on every endpoint with no attribute anywhere. See
+[pipeline behaviours are followed too](#pipeline-behaviours-are-followed-too).
 
 ```bash
 dotnet run --project samples/Sample.Mediator.Validation.Api  # :5087
@@ -557,7 +562,8 @@ samples/Sample.LanguageExt.Api  the same API in Fin<T>, with annotated Expected 
 samples/Sample.Exceptions.Api   the same API with no result type at all, only annotated exceptions
 samples/Sample.Mediator.Api     the same API with every endpoint behind MediatR
 samples/Sample.FluentResults.Api  the same API in FluentResults, with annotated Error subclasses
-samples/Sample.Mediator.Validation.Api  deliberately different: shows what a pipeline behaviour hides
+samples/Sample.Wolverine.Api    the same API behind Wolverine, handlers matched by convention
+samples/Sample.Mediator.Validation.Api  MediatR + FluentValidation: the behaviour's 400 discovered on every endpoint
 samples/client              how the generated union is consumed
 ```
 
@@ -604,7 +610,6 @@ Working on this repository with a coding agent? [`AGENTS.md`](AGENTS.md) is the 
 - Route templates must be compile-time constants (`EAPI002` tells you when they are not).
 - Discovery follows source within the compilation. Errors raised inside a referenced assembly are found only when they flow through a call the generator can see, or when `[ProducesError]` declares them. `[assembly: ErrorMapping]` gives such a type a catalog entry, but not an endpoint.
 - Interface dispatch resolves against the implementations *in the compilation*. A handler wired to an implementation that lives in another assembly needs `[ProducesError]`.
-- Following a message past a dispatcher is a heuristic: it matches a source type implementing a generic interface constructed with the message. A handler resolved some other way — by convention, by name, by a registry — is not found, and `EAPI009` reports it.
-- A **pipeline behaviour is generic over the request**, so it is never constructed with a particular message in source and its failures are not discovered. `EAPI009` does not fire either, because the endpoint did find the handler's errors — the contract is partial, not empty. Declare those failures with `[ProducesError]`.
+- Following a message past a dispatcher is a heuristic. It matches: a source type implementing a generic interface constructed with the message; a `*Handler`/`*Consumer` type with a `Handle`/`Consume` method taking the message (Wolverine's convention); and source types generic over the request implementing an interface from the dispatcher's assembly (pipeline behaviours). A handler resolved some other way — by name, by a registry — is still not found, and `EAPI009` reports it, on partial contracts too.
 - Endpoints are matched by normalized route template plus HTTP method, so two endpoints that differ only by metadata (host, version header) share one entry.
 - The call walk is bounded at a depth of 12, which is generous for an endpoint but not unlimited.

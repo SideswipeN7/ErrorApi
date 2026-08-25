@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Sample.Wolverine.Api</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)generated</CompilerGeneratedFilesOutputPath>
+
+    <!-- Wolverine's runtime compiler wants Roslyn 5.x while the repo pins 4.14 for the generator;
+         letting this one project resolve its transitive graph naturally keeps both worlds intact. -->
+    <CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Scalar.AspNetCore" />
+    <PackageReference Include="WolverineFx" />
+    <PackageReference Include="WolverineFx.RuntimeCompilation" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ErrorApi's own Result<T>, so the only variable in this sample is the dispatch. -->
+    <ProjectReference Include="..\..\src\ErrorApi.AspNetCore\ErrorApi.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\ErrorApi.Generator\ErrorApi.Generator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>
