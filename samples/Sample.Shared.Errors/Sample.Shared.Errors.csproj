@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Sample.Shared.Errors</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)generated</CompilerGeneratedFilesOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- No endpoints anywhere in this project: the generator treats it as a library, walks its own
+         public surface, and bakes CatalogExport + ReachabilityExport attributes into the assembly for
+         Sample.Toolbox.Api to read back through the reference. -->
+    <ProjectReference Include="..\..\src\ErrorApi.Abstractions\ErrorApi.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\ErrorApi.Generator\ErrorApi.Generator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>

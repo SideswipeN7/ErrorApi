@@ -11,6 +11,12 @@ builder.Services.AddOpenApi();
 // endpoint's failures in OpenAPI. There is no runtime scan behind it.
 builder.Services.AddErrorApi();
 
+// A FluentResults result can carry several errors; the first decides the status and the code. Opting
+// in lists the rest under the `errors` member — an optional field the schema and the TS ApiProblem
+// type both document, so this stays inside the contract. POST /orders with an empty customer AND a
+// non-positive total shows it live.
+FluentResultsHttpExtensions.IncludeAllErrors = true;
+
 builder.Services.AddSingleton<IOrderService, InMemoryOrderService>();
 
 var app = builder.Build();

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Sample.Toolbox.Api</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)generated</CompilerGeneratedFilesOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Scalar.AspNetCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ErrorApi.AspNetCore\ErrorApi.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\ErrorApi.Generator\ErrorApi.Generator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+
+    <!-- The shared catalog and its services. The generator here never sees that project's source —
+         only the CatalogExport / ReachabilityExport attributes baked into its assembly. -->
+    <ProjectReference Include="..\Sample.Shared.Errors\Sample.Shared.Errors.csproj" />
+  </ItemGroup>
+
+</Project>

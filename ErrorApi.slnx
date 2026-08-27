@@ -27,6 +27,8 @@
     <Project Path="samples/Sample.Mediator.Api/Sample.Mediator.Api.csproj" />
     <Project Path="samples/Sample.Wolverine.Api/Sample.Wolverine.Api.csproj" />
     <Project Path="samples/Sample.Controllers.Api/Sample.Controllers.Api.csproj" />
+    <Project Path="samples/Sample.Shared.Errors/Sample.Shared.Errors.csproj" />
+    <Project Path="samples/Sample.Toolbox.Api/Sample.Toolbox.Api.csproj" />
     <Project Path="samples/Sample.FluentResults.Api/Sample.FluentResults.Api.csproj" />
     <Project Path="samples/Sample.Mediator.Validation.Api/Sample.Mediator.Validation.Api.csproj" />
   </Folder>

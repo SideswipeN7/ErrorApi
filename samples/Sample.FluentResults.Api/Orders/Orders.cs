@@ -46,6 +46,9 @@ public static class OrderErrors
 
     [ErrorApi.Error(400)]
     public sealed class InvalidCustomer() : FluentError("Customer must not be empty.");
+
+    [ErrorApi.Error(400)]
+    public sealed class InvalidTotal() : FluentError("Total must be greater than zero.");
 }
 
 /// <summary>
@@ -78,9 +81,24 @@ public sealed class InMemoryOrderService : IOrderService
     /// <inheritdoc />
     public Result<Order> Create(CreateOrderRequest request)
     {
+        // Validation accumulates, which is FluentResults' home turf. Both failures are 400s, so the
+        // documented statuses do not change — the first error answers, the rest ride along in the
+        // `errors` member when IncludeAllErrors is on.
+        var failures = new List<global::FluentResults.IError>();
+
         if (string.IsNullOrWhiteSpace(request.Customer))
         {
-            return Result.Fail(new OrderErrors.InvalidCustomer());
+            failures.Add(new OrderErrors.InvalidCustomer());
+        }
+
+        if (request.Total <= 0)
+        {
+            failures.Add(new OrderErrors.InvalidTotal());
+        }
+
+        if (failures.Count > 0)
+        {
+            return Result.Fail<Order>(failures);
         }
 
         var order = new Order(Guid.NewGuid(), request.Customer, request.Total, OrderStatus.Pending);

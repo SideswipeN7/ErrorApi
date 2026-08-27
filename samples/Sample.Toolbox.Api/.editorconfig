@@ -1,0 +1,4 @@
+# ErrorApi options for this project.
+[*.cs]
+# The default walk bound is 12 calls deep; an unusually layered application can raise it.
+errorapi_walk_depth = 16

@@ -1,0 +1,4 @@
+# ErrorApi options for this project. Exporting reachability is already the default for a project
+# that maps no endpoints — spelled out here so the sample shows where the switch lives.
+[*.cs]
+errorapi_export_reachability = true

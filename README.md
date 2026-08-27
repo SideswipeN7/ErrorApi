@@ -67,6 +67,10 @@ dotnet run --project samples/Sample.Wolverine.Api    # :5088, convention handler
 dotnet run --project samples/Sample.Controllers.Api  # :5089, old-fashioned [ApiController] classes
 ```
 
+```bash
+dotnet run --project samples/Sample.Toolbox.Api      # :5090, the toolbox: a shared catalog consumed cross-assembly
+```
+
 One more runs the same pipeline through MediatR with a FluentValidation behaviour — and documents the
 behaviour's 400 on every endpoint with no attribute anywhere. See
 [pipeline behaviours are followed too](#pipeline-behaviours-are-followed-too).
@@ -519,7 +523,8 @@ errorapi_export_reachability = false   # or true, to force exports from a projec
 ```
 
 A referenced assembly that does **not** run the generator has nothing to export, and stays a boundary —
-`EAPI009` names it, `[ProducesError]` covers it.
+`EAPI009` names it, `[ProducesError]` covers it. `samples/Sample.Shared.Errors` + `samples/Sample.Toolbox.Api`
+show the whole round trip live, body-inferred codes included.
 
 ### Errors nobody can return
 
@@ -630,6 +635,8 @@ samples/Sample.Mediator.Api     the same API with every endpoint behind MediatR
 samples/Sample.FluentResults.Api  the same API in FluentResults, with annotated Error subclasses
 samples/Sample.Wolverine.Api    the same API behind Wolverine, handlers matched by convention
 samples/Sample.Controllers.Api  the same API on attribute-routed controllers
+samples/Sample.Shared.Errors    a class library: shared catalog + services, exports baked in at build
+samples/Sample.Toolbox.Api      consumes the library across the assembly boundary; the toolbox features
 samples/Sample.Mediator.Validation.Api  MediatR + FluentValidation: the behaviour's 400 discovered on every endpoint
 samples/client              how the generated union is consumed
 ```

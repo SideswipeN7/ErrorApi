@@ -41,6 +41,7 @@ over it during a normal build; an IL2026/IL3050 warning there is a real regressi
 | `tests/ErrorApi.{ErrorOr,OneOf,LanguageExt,FluentResults}.Tests` | `net10.0` | one suite per adapter, version overridable |
 | `samples/Sample.Api` | `net10.0` | the reference end-to-end proof, and the only one with `PublishAot` |
 | `samples/Sample.{ErrorOr,OneOf,LanguageExt,Exceptions,Mediator,FluentResults,Wolverine,Controllers}.Api` | `net10.0` | the same API per style |
+| `samples/Sample.Shared.Errors` + `samples/Sample.Toolbox.Api` | `net10.0` | a shared catalog library and the API consuming it across the assembly boundary; also demos `ErrorMapping`, `ProducesError(typeof)`, `SuppressErrorApi`, `ToCreatedAtUri`, `errorapi_walk_depth` |
 
 The generator does **not** reference `ErrorApi.Abstractions`. It matches attributes by metadata name
 (`CatalogParser.ErrorAttributeName`), which is also why it can read a catalog out of a referenced assembly.
@@ -152,7 +153,8 @@ there is runtime behaviour — a behaviour test. Adapter tests do exactly this, 
    `ErrorApi.TestKit`, and tests proving both halves — discovery through the generator, and mapping at
    runtime. Register the project in `ErrorApi.slnx` and add matrix rows to `.github/workflows/ci.yml`.
 5. Add `samples/Sample.<Library>.Api/`: the same orders API as the others, on the same three endpoints.
-   The one exception is `Sample.Mediator.Validation.Api`, which adds a validation pipeline on top:
+   Two exceptions are deliberate. `Sample.Toolbox.Api` + `Sample.Shared.Errors` exercise the toolbox
+   features on their own contract. And `Sample.Mediator.Validation.Api` adds a validation pipeline on top:
    it proves the behaviour walk end to end — the 400 thrown by a generic ValidationBehaviour reaches
    both endpoint contracts with no [ProducesError] anywhere, so its contract legitimately differs.
    The samples exist to be diffed against each other, so keep the domain and the routes identical and
