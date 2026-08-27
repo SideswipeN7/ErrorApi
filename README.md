@@ -464,6 +464,37 @@ orders.MapGet("/", [ProducesError("Common.RateLimited")] (IOrderService service)
 
 `[ProducesError]` also works on a method or a whole class, and is merged into every endpoint that reaches it.
 
+### Discovery across project boundaries
+
+The walk reads source, so it used to stop at an assembly boundary: an `OrderService` implemented in
+your Application project was invisible to the Api project's generator. Now the boundary carries the
+knowledge across. A project that runs the generator and maps no endpoints is a library, and a library's
+walk starts at its own public surface: every public method, and every message its handlers accept, gets
+its reachable codes baked in as
+
+```csharp
+[assembly: ReachabilityExport("M:App.IOrderService.GetById(System.Guid)", "Orders.NotFound")]
+[assembly: ReachabilityExport("T:App.PayOrder", "Orders.AlreadyPaid")]
+```
+
+The consuming compilation reads these back through the reference and the walk continues as if the
+boundary were not there — a direct call into the library resolves through the method entry, a
+`sender.Send(new PayOrder(id))` whose handler lives in the library resolves through the message entry,
+and the referenced catalog's `[Error]` attributes supply the full descriptors, so the documented
+response is as rich as a same-assembly one. Exports compose transitively: each assembly's walk reads
+the exports of the assemblies *it* references.
+
+Nothing to configure — referencing an ErrorApi project is the whole setup. `.editorconfig` overrides in
+either direction:
+
+```ini
+[*.cs]
+errorapi_export_reachability = false   # or true, to force exports from a project that maps endpoints
+```
+
+A referenced assembly that does **not** run the generator has nothing to export, and stays a boundary —
+`EAPI009` names it, `[ProducesError]` covers it.
+
 ### Errors nobody can return
 
 A catalog entry that no endpoint reaches is reported as `EAPI010`, and it is worth knowing that this
@@ -617,8 +648,7 @@ Working on this repository with a coding agent? [`AGENTS.md`](AGENTS.md) is the 
 ## Known limits
 
 - Route templates must be compile-time constants (`EAPI002` tells you when they are not).
-- Discovery follows source within the compilation. Errors raised inside a referenced assembly are found only when they flow through a call the generator can see, or when `[ProducesError]` declares them. `[assembly: ErrorMapping]` gives such a type a catalog entry, but not an endpoint.
-- Interface dispatch resolves against the implementations *in the compilation*. A handler wired to an implementation that lives in another assembly needs `[ProducesError]`.
+- Discovery follows source within the compilation — plus the [reachability another ErrorApi project exported](#discovery-across-project-boundaries). A referenced assembly that does *not* run the generator stays opaque: its failures need `[ProducesError]`, and `[assembly: ErrorMapping]` gives such a type a catalog entry, but not an endpoint.
 - Following a message past a dispatcher is a heuristic. It matches: a source type implementing a generic interface constructed with the message; a `*Handler`/`*Consumer` type with a `Handle`/`Consume` method taking the message (Wolverine's convention); and source types generic over the request implementing an interface from the dispatcher's assembly (pipeline behaviours). A handler resolved some other way — by name, by a registry — is still not found, and `EAPI009` reports it, on partial contracts too.
 - Endpoints are matched by normalized route template plus HTTP method, so two endpoints that differ only by metadata (host, version header) share one entry.
 - The call walk is bounded at a depth of 12 by default; an unusually layered application can raise it with `errorapi_walk_depth = 20` in `.editorconfig`.

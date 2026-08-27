@@ -23,7 +23,8 @@ internal static class MetadataEmitter
     public static string Emit(
         IReadOnlyList<DiscoveredError> errors,
         IReadOnlyList<EndpointModel> endpoints,
-        IReadOnlyList<CatalogEntry> errorTypes)
+        IReadOnlyList<CatalogEntry> errorTypes,
+        IReadOnlyList<ReachabilityExport> reachability)
     {
         var index = new Dictionary<string, int>(System.StringComparer.Ordinal);
         for (var i = 0; i < errors.Count; i++)
@@ -39,6 +40,14 @@ internal static class MetadataEmitter
         foreach (var entry in errorTypes.Where(e => e.ExportId is not null).OrderBy(e => e.Code, System.StringComparer.Ordinal))
         {
             writer.Line($"[assembly: global::ErrorApi.CatalogExport({SourceWriter.Literal(entry.ExportId)}, {SourceWriter.Literal(entry.Code)})]");
+        }
+
+        // A library's walk starts at its own public surface; what each member can reach is baked in so
+        // a consuming compilation can continue the walk across the assembly boundary.
+        foreach (var export in reachability)
+        {
+            var codes = string.Join(", ", export.Codes.Select(c => SourceWriter.Literal(c)));
+            writer.Line($"[assembly: global::ErrorApi.ReachabilityExport({SourceWriter.Literal(export.MemberId)}, {codes})]");
         }
 
         using (writer.Block("namespace ErrorApi.Generated"))

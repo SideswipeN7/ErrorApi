@@ -75,4 +75,125 @@ public sealed class CrossAssemblyTests
             output.Source("ErrorApi.Metadata.g.cs"),
             StringComparison.Ordinal);
     }
+
+    /// <summary>An application layer: catalog, service, and a mediator whose handler lives here too.</summary>
+    private const string ApplicationLibrary = """
+        using System;
+        using System.Threading.Tasks;
+        using ErrorApi;
+
+        namespace App;
+
+        [ErrorCatalog("Orders")]
+        public static partial class OrderErrors
+        {
+            [Error(404)] public static partial Error NotFound { get; }
+            [Error(409)] public static partial Error AlreadyPaid { get; }
+        }
+
+        public sealed record Order(Guid Id);
+
+        public interface IOrderService { Result<Order> GetById(Guid id); }
+
+        public sealed class OrderService : IOrderService
+        {
+            public Result<Order> GetById(Guid id) =>
+                id == Guid.Empty ? OrderErrors.NotFound : new Order(id);
+        }
+
+        public interface IRequest<TResponse>;
+
+        public interface IRequestHandler<TRequest, TResponse> where TRequest : IRequest<TResponse>
+        {
+            Task<TResponse> Handle(TRequest request);
+        }
+
+        public interface ISender
+        {
+            Task<TResponse> Send<TResponse>(IRequest<TResponse> request);
+        }
+
+        public sealed record PayOrder(Guid Id) : IRequest<Result>;
+
+        public sealed class PayOrderHandler : IRequestHandler<PayOrder, Result>
+        {
+            public Task<Result> Handle(PayOrder request) =>
+                Task.FromResult<Result>(OrderErrors.AlreadyPaid);
+        }
+        """;
+
+    [Fact]
+    public void The_library_exports_what_its_members_and_messages_can_reach()
+    {
+        var metadata = GeneratorHarness.RunAndCompile(ApplicationLibrary).Source("ErrorApi.Metadata.g.cs");
+
+        // The interface method, for direct calls into the library…
+        Assert.Contains(
+            "[assembly: global::ErrorApi.ReachabilityExport(\"M:App.IOrderService.GetById(System.Guid)\", \"Orders.NotFound\")]",
+            metadata,
+            StringComparison.Ordinal);
+
+        // …and the message type, for dispatches whose handler lives here.
+        Assert.Contains(
+            "[assembly: global::ErrorApi.ReachabilityExport(\"T:App.PayOrder\", \"Orders.AlreadyPaid\")]",
+            metadata,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_service_implemented_in_another_assembly_still_documents_its_failures()
+    {
+        var library = GeneratorHarness.CompileToReference("App.Library", ApplicationLibrary);
+
+        const string api = """
+            using System;
+            using ErrorApi;
+            using App;
+            using Microsoft.AspNetCore.Builder;
+            using Microsoft.AspNetCore.Http;
+            using Microsoft.AspNetCore.Routing;
+
+            public static class Endpoints
+            {
+                public static void Map(IEndpointRouteBuilder app) =>
+                    app.MapGet("/orders/{id:guid}", (Guid id, IOrderService s) => s.GetById(id).ToHttpResult());
+            }
+            """;
+
+        var output = GeneratorHarness.Run([library], api);
+
+        Assert.Empty(output.GeneratorDiagnostics);
+        Assert.Contains(
+            "new global::ErrorApi.EndpointErrors(\"GET\", \"/orders/{id}\", new global::ErrorApi.ErrorDescriptor[] { _errors[0] })",
+            output.Source("ErrorApi.Metadata.g.cs"),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_dispatch_whose_handler_lives_in_another_assembly_is_resolved_through_the_export()
+    {
+        var library = GeneratorHarness.CompileToReference("App.Library", ApplicationLibrary);
+
+        const string api = """
+            using System;
+            using ErrorApi;
+            using App;
+            using Microsoft.AspNetCore.Builder;
+            using Microsoft.AspNetCore.Http;
+            using Microsoft.AspNetCore.Routing;
+
+            public static class Endpoints
+            {
+                public static void Map(IEndpointRouteBuilder app) =>
+                    app.MapPost("/orders/{id:guid}/pay", async (Guid id, ISender sender) =>
+                        (await sender.Send(new PayOrder(id))).ToHttpResult());
+            }
+            """;
+
+        var output = GeneratorHarness.Run([library], api);
+
+        // The 409 comes through the message export — no EAPI009, no [ProducesError] anywhere.
+        Assert.Empty(output.GeneratorDiagnostics);
+        Assert.Contains("\"Orders.AlreadyPaid\"", output.Source("ErrorApi.Metadata.g.cs"), StringComparison.Ordinal);
+    }
 }

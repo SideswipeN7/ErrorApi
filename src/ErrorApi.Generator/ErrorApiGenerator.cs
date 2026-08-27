@@ -84,13 +84,38 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
         ReportUnknownCodes(scan.Endpoints, errors, diagnostics);
         ReportUnreachableErrors(entries, scan.Endpoints, diagnostics);
 
+        // A compilation with no endpoints is a library: its walk starts at its own public surface, and
+        // the result is baked in for the compilation that has the endpoints to read back.
+        var reachability = ExportsReachability(configuration, compilation, hasEndpoints: scan.Endpoints.Count > 0)
+            ? ReachabilityExporter.Compute(compilation, mappedTypes, cancellationToken)
+            : new List<ReachabilityExport>();
+
         return new GenerationModel(
             HasAbstractions: true,
             HasRegistrationType: compilation.GetTypeByMetadataName(RegistrationTypeName) is not null,
             Entries: entries.ToEquatableArray(),
             Errors: errors.ToEquatableArray(),
             Endpoints: scan.Endpoints.ToEquatableArray(),
-            Diagnostics: diagnostics.ToEquatableArray());
+            Diagnostics: diagnostics.ToEquatableArray(),
+            Reachability: reachability.ToEquatableArray());
+    }
+
+    /// <summary>
+    /// Whether this compilation exports its reachability. On by default for a compilation with no
+    /// endpoints — that is a library, and its whole point of running the generator is to be consumed;
+    /// <c>errorapi_export_reachability</c> in .editorconfig overrides in either direction.
+    /// </summary>
+    private static bool ExportsReachability(AnalyzerConfigOptionsProvider configuration, Compilation compilation, bool hasEndpoints)
+    {
+        var tree = compilation.SyntaxTrees.FirstOrDefault();
+        if (tree is not null
+            && configuration.GetOptions(tree).TryGetValue("errorapi_export_reachability", out var value)
+            && bool.TryParse(value, out var declared))
+        {
+            return declared;
+        }
+
+        return !hasEndpoints;
     }
 
     private static void Emit(SourceProductionContext context, GenerationModel model)
@@ -109,7 +134,11 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
 
         context.AddSource(
             MetadataEmitter.HintName,
-            MetadataEmitter.Emit(model.Errors.AsImmutableArray(), model.Endpoints.AsImmutableArray(), entries));
+            MetadataEmitter.Emit(
+                model.Errors.AsImmutableArray(),
+                model.Endpoints.AsImmutableArray(),
+                entries,
+                model.Reachability.AsImmutableArray()));
 
         if (model.HasRegistrationType)
         {

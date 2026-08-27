@@ -34,12 +34,146 @@ internal sealed class ErrorReachabilityWalker
         new(SymbolEqualityComparer.Default);
 
     private readonly Lazy<List<INamedTypeSymbol>> _sourceTypes;
+    private readonly Lazy<Dictionary<string, string[]>> _foreignReachability;
+    private readonly Lazy<Dictionary<string, DiscoveredError>> _foreignCatalog;
 
     public ErrorReachabilityWalker(Compilation compilation)
     {
         _compilation = compilation;
         _sourceTypes = new Lazy<List<INamedTypeSymbol>>(CollectSourceTypes, isThreadSafe: true);
+        _foreignReachability = new Lazy<Dictionary<string, string[]>>(CollectForeignReachability, isThreadSafe: true);
+        _foreignCatalog = new Lazy<Dictionary<string, DiscoveredError>>(CollectForeignCatalog, isThreadSafe: true);
     }
+
+    /// <summary>
+    /// Reachability the referenced assemblies exported about themselves, keyed by documentation comment
+    /// ID. This is how the walk crosses an assembly boundary: the other side already walked its own
+    /// source and baked the result in as <c>[assembly: ReachabilityExport]</c>.
+    /// </summary>
+    private Dictionary<string, string[]> CollectForeignReachability()
+    {
+        var map = new Dictionary<string, string[]>(StringComparer.Ordinal);
+
+        foreach (var assembly in _compilation.SourceModule.ReferencedAssemblySymbols)
+        {
+            foreach (var attribute in assembly.GetAttributes())
+            {
+                if (attribute.AttributeClass is not { Name: "ReachabilityExportAttribute", ContainingNamespace: { Name: "ErrorApi" } ns }
+                    || !ns.ContainingNamespace.IsGlobalNamespace
+                    || attribute.ConstructorArguments.Length != 2
+                    || attribute.ConstructorArguments[0].Value is not string memberId)
+                {
+                    continue;
+                }
+
+                var codes = attribute.ConstructorArguments[1].Values
+                    .Select(v => v.Value as string)
+                    .Where(v => v is not null)
+                    .Select(v => v!)
+                    .ToArray();
+
+                if (codes.Length == 0)
+                {
+                    continue;
+                }
+
+                // Two assemblies exporting the same member (a shared message type, each with its own
+                // handlers) union rather than overwrite.
+                map[memberId] = map.TryGetValue(memberId, out var existing)
+                    ? existing.Concat(codes).Distinct(StringComparer.Ordinal).ToArray()
+                    : codes;
+            }
+        }
+
+        return map;
+    }
+
+    private bool TryGetForeignReachability(ISymbol symbol, out string[] codes)
+    {
+        codes = [];
+        if (_foreignReachability.Value.Count == 0)
+        {
+            return false;
+        }
+
+        return symbol.OriginalDefinition.GetDocumentationCommentId() is { } id
+            && _foreignReachability.Value.TryGetValue(id, out codes!);
+    }
+
+    /// <summary>
+    /// An exported code is just a string; its descriptor — status, title, detail — still lives on the
+    /// <c>[Error]</c> declaration in the referenced catalog. This registers it, so the documented
+    /// response is as rich as if the entry had been reached by walking source.
+    /// </summary>
+    private void AddExportedCodes(string[] exported, Walk walk)
+    {
+        foreach (var code in exported)
+        {
+            walk.Codes.Add(code);
+
+            if (!Discovered.ContainsKey(code) && _foreignCatalog.Value.TryGetValue(code, out var descriptor))
+            {
+                Discovered.TryAdd(code, descriptor);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Descriptor candidates from every referenced assembly that itself uses ErrorApi, keyed by code.
+    /// Attributes travel in metadata, so a referenced catalog is fully readable — only bodies are not.
+    /// </summary>
+    private Dictionary<string, DiscoveredError> CollectForeignCatalog()
+    {
+        var map = new Dictionary<string, DiscoveredError>(StringComparer.Ordinal);
+
+        foreach (var assembly in _compilation.SourceModule.ReferencedAssemblySymbols)
+        {
+            if (!ReferencesErrorApi(assembly))
+            {
+                continue;
+            }
+
+            var queue = new Queue<INamespaceOrTypeSymbol>();
+            queue.Enqueue(assembly.GlobalNamespace);
+
+            while (queue.Count > 0)
+            {
+                foreach (var member in queue.Dequeue().GetMembers())
+                {
+                    if (member is INamespaceSymbol nested)
+                    {
+                        queue.Enqueue(nested);
+                    }
+                    else if (member is INamedTypeSymbol type && type.DeclaredAccessibility == Accessibility.Public)
+                    {
+                        Register(type, map);
+                        foreach (var declared in type.GetMembers())
+                        {
+                            if (declared is IPropertySymbol or IFieldSymbol or IMethodSymbol { MethodKind: MethodKind.Ordinary })
+                            {
+                                Register(declared, map);
+                            }
+                        }
+
+                        queue.Enqueue(type);
+                    }
+                }
+            }
+        }
+
+        return map;
+
+        void Register(ISymbol symbol, Dictionary<string, DiscoveredError> catalog)
+        {
+            if (TryBuildDescriptor(symbol, out var descriptor) && !catalog.ContainsKey(descriptor.Code))
+            {
+                catalog[descriptor.Code] = descriptor;
+            }
+        }
+    }
+
+    private static bool ReferencesErrorApi(IAssemblySymbol assembly) =>
+        assembly.Modules.Any(m => m.ReferencedAssemblies.Any(r => r.Name == "ErrorApi.Abstractions"));
 
     /// <summary>
     /// Wire codes for types declared through <c>[assembly: ErrorMapping]</c>, keyed by fully qualified
@@ -92,6 +226,23 @@ internal sealed class ErrorReachabilityWalker
         return new CollectResult(walk.Codes, walk.UnresolvedDispatches);
     }
 
+    /// <summary>
+    /// Collects the error codes reachable from a method symbol. This is the entry the reachability
+    /// exporter uses: a library has no endpoints, so its walk starts at its public members instead.
+    /// </summary>
+    public CollectResult CollectFromMethod(IMethodSymbol method, bool followDispatch = true, int maxDepth = DefaultMaxDepth)
+    {
+        var walk = new Walk(
+            new SortedSet<string>(StringComparer.Ordinal),
+            new HashSet<ISymbol>(SymbolEqualityComparer.Default),
+            new List<string>(),
+            followDispatch,
+            maxDepth);
+
+        VisitMethod(method, 0, walk);
+        return new CollectResult(walk.Codes, walk.UnresolvedDispatches);
+    }
+
     /// <summary>What one endpoint's walk found, and where it was stopped.</summary>
     /// <param name="Codes">The catalog codes reachable from the handler.</param>
     /// <param name="UnresolvedDispatches">
@@ -137,6 +288,13 @@ internal sealed class ErrorReachabilityWalker
         }
 
         AddDeclaredCodes(method, walk.Codes);
+
+        // A method with no source here may have been walked where its source lives: its assembly
+        // exported the reachable codes, and reading them is how the walk crosses the boundary.
+        if (method.DeclaringSyntaxReferences.Length == 0 && TryGetForeignReachability(method, out var exported))
+        {
+            AddExportedCodes(exported, walk);
+        }
 
         if (method.ContainingType is { } containingType)
         {
@@ -247,8 +405,24 @@ internal sealed class ErrorReachabilityWalker
 
         foreach (var argument in invocation.ArgumentList.Arguments)
         {
-            if (model.GetTypeInfo(argument.Expression).Type is not INamedTypeSymbol { DeclaringSyntaxReferences.Length: > 0 } message)
+            if (model.GetTypeInfo(argument.Expression).Type is not INamedTypeSymbol { TypeKind: TypeKind.Class or TypeKind.Struct } message
+                || message.SpecialType != SpecialType.None)
             {
+                continue;
+            }
+
+            // A message declared in a referenced assembly cannot be bridged by scanning source — but
+            // the assembly that handles it may have exported what its handlers can raise. Anything
+            // else foreign (a Guid, a string, a framework type) is not a message and stays out.
+            if (message.DeclaringSyntaxReferences.Length == 0)
+            {
+                if (TryGetForeignReachability(message, out var exportedForeign))
+                {
+                    sawMessage = true;
+                    AddDeclaredCodes(message, walk.Codes);
+                    AddExportedCodes(exportedForeign, walk);
+                }
+
                 continue;
             }
 
@@ -261,6 +435,14 @@ internal sealed class ErrorReachabilityWalker
             var handlers = FindHandlersFor(message);
             if (handlers.Count == 0)
             {
+                // No handler in this compilation — but the assembly that has one may have exported what
+                // it can raise, keyed by the message type.
+                if (TryGetForeignReachability(message, out var exported))
+                {
+                    AddExportedCodes(exported, walk);
+                    continue;
+                }
+
                 walk.UnresolvedDispatches.Add(target.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat));
                 continue;
             }
@@ -510,8 +692,24 @@ internal sealed class ErrorReachabilityWalker
 
     private bool TryGetErrorCode(ISymbol symbol, out string? code)
     {
-        var definition = symbol.OriginalDefinition;
+        if (TryBuildDescriptor(symbol.OriginalDefinition, out var descriptor))
+        {
+            code = descriptor.Code;
+            Discovered.TryAdd(descriptor.Code, descriptor);
+            return true;
+        }
 
+        code = null;
+        return false;
+    }
+
+    /// <summary>
+    /// Builds the descriptor an <c>[Error]</c>-annotated symbol declares, without registering it —
+    /// registration is the caller's decision, because the foreign-catalog scan builds candidates for
+    /// codes that may never be used.
+    /// </summary>
+    private bool TryBuildDescriptor(ISymbol definition, out DiscoveredError descriptor)
+    {
         foreach (var attribute in definition.GetAttributes())
         {
             if (!IsErrorApiAttribute(attribute, "ErrorAttribute"))
@@ -533,35 +731,30 @@ internal sealed class ErrorReachabilityWalker
 
             // The same resolution the catalog parser applies, so the walk and the catalog agree.
             var value = NameInference.ResolveCode(definition, attribute, _compilation, GetModel);
-            code = value;
 
-            if (!Discovered.ContainsKey(value))
+            string? title = null, detail = null, description = null;
+            foreach (var named in attribute.NamedArguments)
             {
-                string? title = null, detail = null, description = null;
-                foreach (var named in attribute.NamedArguments)
+                var text = named.Value.Value as string;
+                switch (named.Key)
                 {
-                    var text = named.Value.Value as string;
-                    switch (named.Key)
-                    {
-                        case "Title": title = text; break;
-                        case "Detail": detail = text; break;
-                        case "Description": description = text; break;
-                    }
+                    case "Title": title = text; break;
+                    case "Detail": detail = text; break;
+                    case "Description": description = text; break;
                 }
-
-                Discovered[value] = new DiscoveredError(
-                    value,
-                    status.Value,
-                    title ?? NameInference.Humanize(NameInference.EntryName(definition)),
-                    detail,
-                    description,
-                    definition.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat));
             }
 
+            descriptor = new DiscoveredError(
+                value,
+                status.Value,
+                title ?? NameInference.Humanize(NameInference.EntryName(definition)),
+                detail,
+                description,
+                definition.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat));
             return true;
         }
 
-        code = null;
+        descriptor = null!;
         return false;
     }
 }

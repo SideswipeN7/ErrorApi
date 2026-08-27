@@ -13,7 +13,8 @@ internal sealed record GenerationModel(
     EquatableArray<CatalogEntry> Entries,
     EquatableArray<DiscoveredError> Errors,
     EquatableArray<EndpointModel> Endpoints,
-    EquatableArray<DiagnosticInfo> Diagnostics) : System.IEquatable<GenerationModel>
+    EquatableArray<DiagnosticInfo> Diagnostics,
+    EquatableArray<ReachabilityExport> Reachability = default) : System.IEquatable<GenerationModel>
 {
     /// <summary>The model of a compilation that does not reference ErrorApi.Abstractions.</summary>
     public static readonly GenerationModel Empty = new(
