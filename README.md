@@ -63,6 +63,10 @@ dotnet run --project samples/Sample.FluentResults.Api  # :5086
 dotnet run --project samples/Sample.Wolverine.Api    # :5088, convention handlers, no interfaces
 ```
 
+```bash
+dotnet run --project samples/Sample.Controllers.Api  # :5089, old-fashioned [ApiController] classes
+```
+
 One more runs the same pipeline through MediatR with a FluentValidation behaviour — and documents the
 behaviour's 400 on every endpoint with no attribute anywhere. See
 [pipeline behaviours are followed too](#pipeline-behaviours-are-followed-too).
@@ -129,6 +133,28 @@ app.MapGet("/orders/{id:guid}", Results<Ok<Order>, ProblemHttpResult> (Guid id, 
 | `ToCreatedAtRoute(...)` | `ToTypedCreatedAtRoute(...)` | `CreatedAtRoute<T>` |
 
 The failure arm is always `ProblemHttpResult`, which carries no static status — that is exactly the hole the generated per-endpoint contract fills, so the error half of the document is identical in both styles.
+
+**Old-fashioned controllers work too.** An attribute-routed action is a handler like any other: the
+generator finds the class by its `ControllerBase` ancestry (or `[ApiController]`), reads the route from
+the attributes — `[controller]`/`[action]` tokens, constraints, rooted templates and all — and walks
+the action method the same way it walks a lambda:
+
+```csharp
+[ApiController]
+[Route("orders")]
+public sealed class OrdersController(IOrderStore store) : ControllerBase
+{
+    [HttpGet("{id:guid}")]
+    public ActionResult<Order> GetById(Guid id) => store.Find(id).ToActionResult();   // documents 404
+
+    [HttpPost("{id:guid}/pay")]
+    public IResult Pay(Guid id, decimal amount) => store.Pay(id, amount).ToHttpResult();   // MVC executes IResult too
+}
+```
+
+`ToActionResult()`/`ToCreatedActionResult(...)` speak MVC's own vocabulary and produce the identical
+problem body, so mixing controllers and Minimal APIs in one application yields one consistent document.
+Conventional (non-attribute) routing has no compile-time template to read and stays out of scope.
 
 ---
 
@@ -603,6 +629,7 @@ samples/Sample.Exceptions.Api   the same API with no result type at all, only an
 samples/Sample.Mediator.Api     the same API with every endpoint behind MediatR
 samples/Sample.FluentResults.Api  the same API in FluentResults, with annotated Error subclasses
 samples/Sample.Wolverine.Api    the same API behind Wolverine, handlers matched by convention
+samples/Sample.Controllers.Api  the same API on attribute-routed controllers
 samples/Sample.Mediator.Validation.Api  MediatR + FluentValidation: the behaviour's 400 discovered on every endpoint
 samples/client              how the generated union is consumed
 ```

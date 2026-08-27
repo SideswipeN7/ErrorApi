@@ -56,7 +56,12 @@ internal static class EndpointScanner
             new System.Threading.Tasks.ParallelOptions { CancellationToken = cancellationToken },
             index => scanned[index] = ScanCandidate(compilation, candidates[index], configuration, walker));
 
-        foreach (var item in scanned)
+        // Controllers are the second endpoint surface: attribute-routed actions found by type, not by
+        // call site. They produce the same ScannedEndpoint shape and go through the same merge, so an
+        // application can mix Minimal APIs and controllers in one document.
+        var controllerScanned = ControllerScanner.Scan(compilation, configuration, walker, cancellationToken);
+
+        foreach (var item in scanned.Concat(controllerScanned))
         {
             if (item is null)
             {
@@ -109,13 +114,6 @@ internal static class EndpointScanner
         return new ScanResult(endpoints, discovered);
     }
 
-    /// <summary>What one candidate invocation contributed: possibly an endpoint, possibly diagnostics.</summary>
-    private sealed record ScannedEndpoint(
-        EndpointModel? Endpoint,
-        string? UnresolvedDispatch,
-        bool HandlerReturnsResult,
-        ImmutableHashSet<string> Suppressed,
-        List<DiagnosticInfo> Diagnostics);
 
     /// <summary>Reads one candidate invocation. Runs concurrently with the others; touches no shared state.</summary>
     private static ScannedEndpoint? ScanCandidate(
@@ -209,7 +207,7 @@ internal static class EndpointScanner
     /// Reads <c>errorapi_follow_dispatch</c> from .editorconfig. A heuristic without an off switch is a
     /// liability; following a message into its handler is on unless a project says otherwise.
     /// </summary>
-    private static bool FollowsDispatch(AnalyzerConfigOptions options) =>
+    internal static bool FollowsDispatch(AnalyzerConfigOptions options) =>
         !options.TryGetValue("errorapi_follow_dispatch", out var value)
         || !bool.TryParse(value, out var enabled)
         || enabled;
@@ -218,7 +216,7 @@ internal static class EndpointScanner
     /// Reads <c>errorapi_walk_depth</c> from .editorconfig. Twelve is generous for an endpoint, but an
     /// unusually layered application should be able to say so instead of losing its deepest failures.
     /// </summary>
-    private static int WalkDepth(AnalyzerConfigOptions options) =>
+    internal static int WalkDepth(AnalyzerConfigOptions options) =>
         options.TryGetValue("errorapi_walk_depth", out var value)
         && int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var depth)
         && depth > 0
@@ -335,11 +333,12 @@ internal static class EndpointScanner
     private static bool ReturnsResult(ExpressionSyntax handler, SemanticModel model)
     {
         var info = model.GetSymbolInfo(handler);
-        if ((info.Symbol ?? info.CandidateSymbols.FirstOrDefault()) is not IMethodSymbol method)
-        {
-            return false;
-        }
+        return (info.Symbol ?? info.CandidateSymbols.FirstOrDefault()) is IMethodSymbol method
+            && ReturnsResult(method);
+    }
 
+    internal static bool ReturnsResult(IMethodSymbol method)
+    {
         var returnType = method.ReturnType;
         if (returnType is INamedTypeSymbol { IsGenericType: true } named
             && named.ConstructedFrom.ToDisplayString() is "System.Threading.Tasks.Task<TResult>" or "System.Threading.Tasks.ValueTask<TResult>")

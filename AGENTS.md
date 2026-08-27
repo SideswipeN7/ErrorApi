@@ -18,7 +18,7 @@ that introduces reflection on the request path, is going the wrong way.
 
 ```bash
 dotnet build ErrorApi.slnx                       # must be warning-free
-dotnet test ErrorApi.slnx                        # 79 tests across four suites
+dotnet test ErrorApi.slnx                        # 179 tests across five suites
 ERRORAPI_ACCEPT_SNAPSHOTS=1 dotnet test ErrorApi.slnx   # re-approve snapshots, then read the diff
 dotnet run --project samples/Sample.Api          # /swagger, /scalar, /openapi/v1.json, /openapi/errors.ts
 dotnet run --project samples/Sample.ErrorOr.Api  # and .OneOf. / .LanguageExt. — same API, same contract
@@ -40,7 +40,7 @@ over it during a normal build; an IL2026/IL3050 warning there is a real regressi
 | `tests/ErrorApi.Generator.Tests` | `net10.0` | core snapshot and behaviour tests; references no result library |
 | `tests/ErrorApi.{ErrorOr,OneOf,LanguageExt,FluentResults}.Tests` | `net10.0` | one suite per adapter, version overridable |
 | `samples/Sample.Api` | `net10.0` | the reference end-to-end proof, and the only one with `PublishAot` |
-| `samples/Sample.{ErrorOr,OneOf,LanguageExt,Exceptions,Mediator,FluentResults,Wolverine}.Api` | `net10.0` | the same API per style |
+| `samples/Sample.{ErrorOr,OneOf,LanguageExt,Exceptions,Mediator,FluentResults,Wolverine,Controllers}.Api` | `net10.0` | the same API per style |
 
 The generator does **not** reference `ErrorApi.Abstractions`. It matches attributes by metadata name
 (`CatalogParser.ErrorAttributeName`), which is also why it can read a catalog out of a referenced assembly.
@@ -64,7 +64,9 @@ The generator does **not** reference `ErrorApi.Abstractions`. It matches attribu
    the walk has to agree with the catalog it is walking towards; a change to one order without the
    other silently empties endpoint contracts.
 2. **`EndpointScanner`** resolves each `Map*` call site: route template (including `MapGroup` prefixes
-   followed back through locals), HTTP method, and handler expression.
+   followed back through locals), HTTP method, and handler expression. **`ControllerScanner`** is the
+   second endpoint surface: attribute-routed `ControllerBase`/`[ApiController]` actions, with MVC's
+   token and rooted-template rules, feeding the same merge.
 3. **`ErrorReachabilityWalker`** walks from the handler through the call graph — into source bodies, local
    functions, and **through interface and virtual dispatch** to implementations in the compilation —
    collecting `[Error]` member reads, `[Error]` type constructions, and `[ProducesError]` declarations.
@@ -99,7 +101,8 @@ The generator does **not** reference `ErrorApi.Abstractions`. It matches attribu
   `.editorconfig`, and say so when you document a rule.
 - **Code inference has exactly one implementation.** `NameInference.CodeFromBody` and
   `CodeFromName` are shared by `CatalogParser` and `ErrorReachabilityWalker`. A symbol from a
-  referenced assembly has no body to read, so cross-assembly catalogs resolve by name only.
+  referenced assembly has no body to read, so body-inferred codes are baked in as
+  `[assembly: CatalogExport]` and read back through the reference.
 - **An exception type is a catalog entry like any other.** It needs no adapter because `System.Exception`
   needs no package, so `ErrorApiExceptionHandler` lives in `ErrorApi.AspNetCore`. It writes the response
   through `Error.ToProblem()`, the same call the result path makes, and that is not an accident: a client
