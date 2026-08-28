@@ -49,11 +49,13 @@ public sealed class EndpointErrors
     /// <param name="httpMethod">Upper-case HTTP method, e.g. <c>GET</c>.</param>
     /// <param name="routePattern">Normalized route pattern, e.g. <c>/orders/{id}</c>.</param>
     /// <param name="errors">Errors reachable from the endpoint handler.</param>
-    public EndpointErrors(string httpMethod, string routePattern, IReadOnlyList<ErrorDescriptor> errors)
+    /// <param name="group">API description group the endpoint belongs to, or <see langword="null"/>.</param>
+    public EndpointErrors(string httpMethod, string routePattern, IReadOnlyList<ErrorDescriptor> errors, string? group = null)
     {
         HttpMethod = httpMethod;
         RoutePattern = routePattern;
         Errors = errors;
+        Group = group;
     }
 
     /// <summary>Upper-case HTTP method, e.g. <c>GET</c>.</summary>
@@ -61,6 +63,14 @@ public sealed class EndpointErrors
 
     /// <summary>Normalized route pattern, e.g. <c>/orders/{id}</c>.</summary>
     public string RoutePattern { get; }
+
+    /// <summary>
+    /// The API description group the endpoint belongs to — <c>WithGroupName(...)</c> on the endpoint or
+    /// its group, or <c>[ApiExplorerSettings(GroupName = ...)]</c> on a controller. This is what
+    /// separates two endpoints that share a route and method but answer for different API versions.
+    /// <see langword="null"/> for the common ungrouped endpoint.
+    /// </summary>
+    public string? Group { get; }
 
     /// <summary>Errors reachable from the endpoint handler.</summary>
     public IReadOnlyList<ErrorDescriptor> Errors { get; }
@@ -91,4 +101,12 @@ public interface IErrorApiMetadata
 
     /// <summary>Looks up the errors of one endpoint. <paramref name="routePattern"/> is normalized by <see cref="RoutePattern.Normalize"/>.</summary>
     bool TryGetEndpointErrors(string httpMethod, string routePattern, out IReadOnlyList<ErrorDescriptor> errors);
+
+    /// <summary>
+    /// Looks up the errors of one endpoint within an API description group. Resolution order: the exact
+    /// group first, then the ungrouped entry for the same route and method; a <see langword="null"/>
+    /// <paramref name="group"/> also matches a route that exists in exactly one group, so a purely
+    /// cosmetic <c>WithGroupName</c> never hides an endpoint's errors.
+    /// </summary>
+    bool TryGetEndpointErrors(string httpMethod, string routePattern, string? group, out IReadOnlyList<ErrorDescriptor> errors);
 }

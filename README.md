@@ -411,6 +411,23 @@ For each `MapGet`/`MapPost`/`MapPut`/`MapDelete`/`MapPatch`/`MapMethods`/`Map` c
 
 Step 3 is what a runtime mapper cannot do. Endpoints normally talk to an `IOrderService`; the errors live two or three layers down.
 
+### Two versions of one route
+
+Endpoint identity is route + method + **API description group**, so a header-versioned API that splits
+its documents by group keeps a separate contract per version:
+
+```csharp
+app.MapGet("/orders/{id:guid}", V1Handler).WithGroupName("v1");   // documents 410 Orders.Retired
+app.MapGet("/orders/{id:guid}", V2Handler).WithGroupName("v2");   // documents 404 Orders.NotFound
+```
+
+The group comes from `WithGroupName(...)` on the endpoint or its `MapGroup` chain, or
+`[ApiExplorerSettings(GroupName = ...)]` on a controller or action. Resolution at document-build time:
+the exact group first, then the ungrouped entry, and a null group also matches a route that lives in
+exactly one group — so a purely cosmetic `WithGroupName` never hides an endpoint's errors. When two
+groups share a route, the TypeScript contract tells them apart too: `GetOrdersByIdV1Error` /
+`GetOrdersByIdV2Error`, keyed as `"GET /orders/{id} @v1"`.
+
 ### Endpoints behind a mediator
 
 `sender.Send(new GetOrder(id))` used to end the walk. `ISender.Send` is implemented inside MediatR, so
@@ -684,5 +701,5 @@ Working on this repository with a coding agent? [`AGENTS.md`](AGENTS.md) is the 
 - Route templates must be compile-time constants (`EAPI002` tells you when they are not).
 - Discovery follows source within the compilation — plus the [reachability another ErrorApi project exported](#discovery-across-project-boundaries). A referenced assembly that does *not* run the generator stays opaque: its failures need `[ProducesError]`, and `[assembly: ErrorMapping]` gives such a type a catalog entry, but not an endpoint.
 - Following a message past a dispatcher is a heuristic. It matches: a source type implementing a generic interface constructed with the message; a `*Handler`/`*Consumer` type with a `Handle`/`Consume` method taking the message (Wolverine's convention); and source types generic over the request implementing an interface from the dispatcher's assembly (pipeline behaviours). A handler resolved some other way — by name, by a registry — is still not found, and `EAPI009` reports it, on partial contracts too.
-- Endpoints are matched by normalized route template plus HTTP method, so two endpoints that differ only by metadata (host, version header) share one entry.
+- Endpoints are matched by normalized route template, HTTP method and API description group — `WithGroupName(...)` or `[ApiExplorerSettings(GroupName = ...)]` tells two versions of one route apart, which covers header-versioned APIs that split their documents by group. Host-based routing (`RequireHost`) has no reflection in `ApiDescription` and still shares one entry.
 - The call walk is bounded at a depth of 12 by default; an unusually layered application can raise it with `errorapi_walk_depth = 20` in `.editorconfig`.

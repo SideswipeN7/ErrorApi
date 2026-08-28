@@ -110,9 +110,10 @@ internal static class MetadataEmitter
                     ? $"global::System.Array.Empty<{Descriptor}>()"
                     : $"new {Descriptor}[] {{ {string.Join(", ", references)} }}";
 
+                var group = endpoint.Group is null ? string.Empty : $", {SourceWriter.Literal(endpoint.Group)}";
                 writer.Line(
                     $"new {EndpointErrors}({SourceWriter.Literal(endpoint.HttpMethod)}, " +
-                    $"{SourceWriter.Literal(endpoint.RoutePattern)}, {payload}),");
+                    $"{SourceWriter.Literal(endpoint.RoutePattern)}, {payload}{group}),");
             }
         }
     }
@@ -189,7 +190,11 @@ internal static class MetadataEmitter
 
     private static void WriteTryGetEndpointErrors(SourceWriter writer, IReadOnlyList<EndpointModel> endpoints)
     {
-        var signature = $"public bool TryGetEndpointErrors(string httpMethod, string routePattern, out {ReadOnlyList}<{Descriptor}> errors)";
+        writer.Line($"public bool TryGetEndpointErrors(string httpMethod, string routePattern, out {ReadOnlyList}<{Descriptor}> errors)");
+        writer.Line("    => TryGetEndpointErrors(httpMethod, routePattern, null, out errors);");
+        writer.Line();
+
+        var signature = $"public bool TryGetEndpointErrors(string httpMethod, string routePattern, string? group, out {ReadOnlyList}<{Descriptor}> errors)";
 
         using (writer.Block(signature))
         {
@@ -209,18 +214,9 @@ internal static class MetadataEmitter
                         {
                             using (writer.Block("switch (httpMethod)"))
                             {
-                                foreach (var (endpoint, ordinal) in route)
+                                foreach (var method in MethodCases(route))
                                 {
-                                    if (endpoint.HttpMethod == "*")
-                                    {
-                                        writer.Line($"default: errors = _endpoints[{ordinal}].Errors; return true;");
-                                        continue;
-                                    }
-
-                                    foreach (var method in endpoint.HttpMethod.Split(','))
-                                    {
-                                        writer.Line($"case {SourceWriter.Literal(method)}: errors = _endpoints[{ordinal}].Errors; return true;");
-                                    }
+                                    WriteMethodCase(writer, method.Label, method.Entries);
                                 }
                             }
 
@@ -234,6 +230,87 @@ internal static class MetadataEmitter
 
             writer.Line($"errors = global::System.Array.Empty<{Descriptor}>();");
             writer.Line("return false;");
+        }
+    }
+
+    /// <summary>One <c>httpMethod</c> switch label per verb, with every group's entry gathered under it.</summary>
+    private static IEnumerable<(string Label, List<(string? Group, int Ordinal)> Entries)> MethodCases(
+        IEnumerable<(EndpointModel endpoint, int ordinal)> route)
+    {
+        var byLabel = new Dictionary<string, List<(string?, int)>>(System.StringComparer.Ordinal);
+        var order = new List<string>();
+
+        foreach (var (endpoint, ordinal) in route)
+        {
+            IEnumerable<string> labels = endpoint.HttpMethod == "*"
+                ? new[] { "default:" }
+                : endpoint.HttpMethod.Split(',').Select(m => $"case {SourceWriter.Literal(m)}:");
+
+            foreach (var label in labels)
+            {
+                if (!byLabel.TryGetValue(label, out var entries))
+                {
+                    byLabel[label] = entries = [];
+                    order.Add(label);
+                }
+
+                entries.Add((endpoint.Group, ordinal));
+            }
+        }
+
+        foreach (var label in order)
+        {
+            yield return (label, byLabel[label]);
+        }
+    }
+
+    /// <summary>
+    /// Writes one verb's resolution. The rules mirror the documented contract: the exact group first,
+    /// then the ungrouped entry, and a null group also matches a route that lives in exactly one group —
+    /// so a purely cosmetic <c>WithGroupName</c> never hides an endpoint's errors.
+    /// </summary>
+    private static void WriteMethodCase(SourceWriter writer, string label, List<(string? Group, int Ordinal)> entries)
+    {
+        var ungroupedList = entries.Where(e => e.Group is null).ToList();
+        int? ungrouped = ungroupedList.Count > 0 ? ungroupedList[0].Ordinal : null;
+        var grouped = entries.Where(e => e.Group is not null).ToList();
+
+        if (grouped.Count == 0)
+        {
+            // The common shape: one ungrouped endpoint, any group resolves to it.
+            writer.Line($"{label} errors = _endpoints[{ungrouped}].Errors; return true;");
+            return;
+        }
+
+        writer.Line(label);
+        using (writer.Indented())
+        {
+            using (writer.Block("switch (group)"))
+            {
+                foreach (var (name, ordinal) in grouped)
+                {
+                    writer.Line($"case {SourceWriter.Literal(name)}: errors = _endpoints[{ordinal}].Errors; return true;");
+                }
+            }
+
+            if (ungrouped is not null)
+            {
+                writer.Line($"errors = _endpoints[{ungrouped}].Errors; return true;");
+            }
+            else if (grouped.Count == 1)
+            {
+                using (writer.Block("if (group is null)"))
+                {
+                    writer.Line($"errors = _endpoints[{grouped[0].Ordinal}].Errors; return true;");
+                }
+
+                writer.Line("break;");
+            }
+            else
+            {
+                // Several groups and no ungrouped entry: a null group is ambiguous here, so it misses.
+                writer.Line("break;");
+            }
         }
     }
 

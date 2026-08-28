@@ -39,9 +39,22 @@ public sealed class FakeMetadata : IErrorApiMetadata
         instance is not null && ByType.TryGetValue(instance.GetType(), out var descriptor) ? descriptor : null;
 
     /// <inheritdoc />
-    public bool TryGetEndpointErrors(string httpMethod, string routePattern, out IReadOnlyList<ErrorDescriptor> errors)
+    public bool TryGetEndpointErrors(string httpMethod, string routePattern, out IReadOnlyList<ErrorDescriptor> errors) =>
+        TryGetEndpointErrors(httpMethod, routePattern, group: null, out errors);
+
+    /// <inheritdoc />
+    public bool TryGetEndpointErrors(string httpMethod, string routePattern, string? group, out IReadOnlyList<ErrorDescriptor> errors)
     {
-        var match = Endpoints.FirstOrDefault(e => e.HttpMethod == httpMethod && e.RoutePattern == routePattern);
+        // The same resolution the generated model applies: exact group, then the ungrouped entry, and a
+        // null group also matches a route that lives in exactly one group.
+        var candidates = Endpoints
+            .Where(e => e.HttpMethod == httpMethod && e.RoutePattern == routePattern)
+            .ToList();
+
+        var match = candidates.FirstOrDefault(e => e.Group == group)
+            ?? candidates.FirstOrDefault(e => e.Group is null)
+            ?? (group is null && candidates.Count == 1 ? candidates[0] : null);
+
         errors = match?.Errors ?? [];
         return match is not null;
     }

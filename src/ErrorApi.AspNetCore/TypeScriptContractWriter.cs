@@ -21,6 +21,7 @@ public static class TypeScriptContractWriter
         var endpoints = metadata.Endpoints
             .OrderBy(e => e.RoutePattern, StringComparer.Ordinal)
             .ThenBy(e => e.HttpMethod, StringComparer.Ordinal)
+            .ThenBy(e => e.Group, StringComparer.Ordinal)
             .ToList();
 
         var builder = new StringBuilder();
@@ -101,9 +102,9 @@ public static class TypeScriptContractWriter
 
         foreach (var endpoint in endpoints)
         {
-            var alias = UniqueAlias(AliasFor(endpoint), used);
-            builder.Append("/** Failures of `").Append(endpoint.HttpMethod).Append(' ')
-                   .Append(endpoint.RoutePattern).Append("`. */\nexport type ").Append(alias).Append(" =");
+            var alias = UniqueAlias(AliasFor(endpoint, Discriminated(endpoints, endpoint)), used);
+            builder.Append("/** Failures of `").Append(EndpointKey(endpoints, endpoint))
+                   .Append("`. */\nexport type ").Append(alias).Append(" =");
 
             if (endpoint.Errors.Count == 0)
             {
@@ -127,16 +128,34 @@ public static class TypeScriptContractWriter
 
         foreach (var endpoint in endpoints)
         {
-            var key = endpoint.HttpMethod + " " + endpoint.RoutePattern;
             var codes = endpoint.Errors.Select(e => Quote(e.Code)).OrderBy(c => c, StringComparer.Ordinal);
-            builder.Append("  ").Append(Quote(key)).Append(": [").Append(string.Join(", ", codes)).Append("],\n");
+            builder.Append("  ").Append(Quote(EndpointKey(endpoints, endpoint)))
+                   .Append(": [").Append(string.Join(", ", codes)).Append("],\n");
         }
 
         builder.Append("} as const satisfies Record<string, readonly ApiErrorCode[]>;\n");
     }
 
+    /// <summary>
+    /// True when the endpoint's group is load-bearing: another entry shares its route and method, so
+    /// only the group tells them apart. A purely cosmetic group changes nothing in the output.
+    /// </summary>
+    private static bool Discriminated(IReadOnlyList<EndpointErrors> endpoints, EndpointErrors endpoint) =>
+        endpoint.Group is not null
+        && endpoints.Any(other =>
+            !ReferenceEquals(other, endpoint)
+            && other.HttpMethod == endpoint.HttpMethod
+            && other.RoutePattern == endpoint.RoutePattern);
+
+    /// <summary>The map key: <c>"METHOD /route"</c>, plus <c>@group</c> when the group is load-bearing.</summary>
+    private static string EndpointKey(IReadOnlyList<EndpointErrors> endpoints, EndpointErrors endpoint)
+    {
+        var key = endpoint.HttpMethod + " " + endpoint.RoutePattern;
+        return Discriminated(endpoints, endpoint) ? key + " @" + endpoint.Group : key;
+    }
+
     /// <summary>Turns <c>GET /orders/{id}/lines</c> into <c>GetOrdersByIdLinesError</c>.</summary>
-    private static string AliasFor(EndpointErrors endpoint)
+    private static string AliasFor(EndpointErrors endpoint, bool includeGroup)
     {
         var builder = new StringBuilder();
 
@@ -160,6 +179,11 @@ public static class TypeScriptContractWriter
             {
                 builder.Append(Pascal(segment));
             }
+        }
+
+        if (includeGroup && endpoint.Group is { } group)
+        {
+            builder.Append(Pascal(group));
         }
 
         return builder.Append("Error").ToString();

@@ -33,7 +33,7 @@ public sealed class ErrorApiOperationTransformer : IOpenApiOperationTransformer
         var route = RoutePattern.Normalize(context.Description.RelativePath);
         var method = context.Description.HttpMethod ?? "*";
 
-        if (!metadata.TryGetEndpointErrors(method, route, out var errors) || errors.Count == 0)
+        if (!metadata.TryGetEndpointErrors(method, route, context.Description.GroupName, out var errors) || errors.Count == 0)
         {
             return Task.CompletedTask;
         }

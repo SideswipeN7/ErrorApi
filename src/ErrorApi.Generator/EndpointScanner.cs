@@ -41,7 +41,7 @@ internal static class EndpointScanner
         System.Threading.CancellationToken cancellationToken = default)
     {
         var walker = new ErrorReachabilityWalker(compilation) { MappedTypes = mappedTypes };
-        var models = new Dictionary<(string Method, string Route), EndpointModel>();
+        var models = new Dictionary<(string Method, string Route, string? Group), EndpointModel>();
 
         // Binding an endpoint statement — the Map* overload resolution plus the handler body — is where
         // this generator's time goes, and endpoints are independent of each other: semantic models are
@@ -76,7 +76,7 @@ internal static class EndpointScanner
             }
 
             var codes = new SortedSet<string>(endpoint.ErrorCodes, System.StringComparer.Ordinal);
-            var key = (endpoint.HttpMethod, endpoint.RoutePattern);
+            var key = (endpoint.HttpMethod, endpoint.RoutePattern, endpoint.Group);
 
             if (models.TryGetValue(key, out var existing))
             {
@@ -105,6 +105,7 @@ internal static class EndpointScanner
         var endpoints = models.Values
             .OrderBy(e => e.RoutePattern, System.StringComparer.Ordinal)
             .ThenBy(e => e.HttpMethod, System.StringComparer.Ordinal)
+            .ThenBy(e => e.Group, System.StringComparer.Ordinal)
             .ToList();
 
         var discovered = walker.Discovered.Values
@@ -193,7 +194,8 @@ internal static class EndpointScanner
             DeclaredPattern: patternText,
             HandlerDisplay: DescribeHandler(handler, model),
             ErrorCodes: new EquatableArray<string>(walk.Codes.ToImmutableArray()),
-            Location: LocationInfo.From(invocation));
+            Location: LocationInfo.From(invocation),
+            Group: ResolveGroup(invocation, model));
 
         return new ScannedEndpoint(
             endpoint,
@@ -249,6 +251,101 @@ internal static class EndpointScanner
 
     private static ExpressionSyntax? GetReceiver(InvocationExpressionSyntax invocation) =>
         invocation.Expression is MemberAccessExpressionSyntax member ? member.Expression : null;
+
+    /// <summary>
+    /// Resolves the endpoint's API description group: <c>WithGroupName(...)</c> chained after the
+    /// <c>Map*</c> call wins, then one inherited from the builder chain (a group's, or one on the local
+    /// the builder was assigned to). This is what tells two versions of the same route apart.
+    /// </summary>
+    private static string? ResolveGroup(InvocationExpressionSyntax invocation, SemanticModel model) =>
+        TrailingGroup(invocation, model) ?? ReceiverGroup(GetReceiver(invocation), model, 0);
+
+    private static string? TrailingGroup(InvocationExpressionSyntax invocation, SemanticModel model)
+    {
+        SyntaxNode current = invocation;
+
+        while (current.Parent is MemberAccessExpressionSyntax { Parent: InvocationExpressionSyntax outer } member
+               && member.Expression == current)
+        {
+            if (member.Name.Identifier.ValueText == "WithGroupName"
+                && outer.ArgumentList.Arguments.Count > 0
+                && model.GetConstantValue(outer.ArgumentList.Arguments[0].Expression).Value is string name)
+            {
+                return name;
+            }
+
+            current = outer;
+        }
+
+        return null;
+    }
+
+    /// <summary>The receiver-chain twin of <see cref="ResolvePrefix"/>: nearest declaration wins.</summary>
+    private static string? ReceiverGroup(ExpressionSyntax? receiver, SemanticModel model, int depth)
+    {
+        if (receiver is null || depth > MaxPrefixDepth)
+        {
+            return null;
+        }
+
+        switch (receiver)
+        {
+            case InvocationExpressionSyntax invocation:
+            {
+                if (invocation.Expression is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "WithGroupName" }
+                    && invocation.ArgumentList.Arguments.Count > 0
+                    && model.GetConstantValue(invocation.ArgumentList.Arguments[0].Expression).Value is string name)
+                {
+                    return name;
+                }
+
+                return ReceiverGroup(GetReceiver(invocation), model, depth + 1);
+            }
+
+            case ParenthesizedExpressionSyntax parenthesized:
+                return ReceiverGroup(parenthesized.Expression, model, depth + 1);
+
+            case IdentifierNameSyntax or MemberAccessExpressionSyntax:
+            {
+                var symbol = model.GetSymbolInfo(receiver).Symbol;
+                if (symbol is null)
+                {
+                    return null;
+                }
+
+                foreach (var reference in symbol.DeclaringSyntaxReferences)
+                {
+                    var initializer = reference.GetSyntax() switch
+                    {
+                        VariableDeclaratorSyntax declarator => declarator.Initializer?.Value,
+                        PropertyDeclarationSyntax property => property.Initializer?.Value ?? property.ExpressionBody?.Expression,
+                        _ => null,
+                    };
+
+                    if (initializer is null)
+                    {
+                        continue;
+                    }
+
+                    var declaringModel = model.SyntaxTree == initializer.SyntaxTree
+                        ? model
+                        : model.Compilation.ContainsSyntaxTree(initializer.SyntaxTree)
+                            ? model.Compilation.GetSemanticModel(initializer.SyntaxTree)
+                            : null;
+
+                    if (declaringModel is not null)
+                    {
+                        return ReceiverGroup(initializer, declaringModel, depth + 1);
+                    }
+                }
+
+                return null;
+            }
+
+            default:
+                return null;
+        }
+    }
 
     /// <summary>
     /// Rebuilds the route prefix contributed by <c>MapGroup</c>, following the builder back through

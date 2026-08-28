@@ -18,7 +18,7 @@ that introduces reflection on the request path, is going the wrong way.
 
 ```bash
 dotnet build ErrorApi.slnx                       # must be warning-free
-dotnet test ErrorApi.slnx                        # 179 tests across five suites
+dotnet test ErrorApi.slnx                        # 185 tests across five suites
 ERRORAPI_ACCEPT_SNAPSHOTS=1 dotnet test ErrorApi.slnx   # re-approve snapshots, then read the diff
 dotnet run --project samples/Sample.Api          # /swagger, /scalar, /openapi/v1.json, /openapi/errors.ts
 dotnet run --project samples/Sample.ErrorOr.Api  # and .OneOf. / .LanguageExt. — same API, same contract
@@ -80,7 +80,9 @@ The generator does **not** reference `ErrorApi.Abstractions`. It matches attribu
 4. **`Emit/CatalogEmitter`** writes the implementing partials (generated entries only).
    **`Emit/MetadataEmitter`** writes the descriptor table, the endpoint map, the code switch, the
    instance-type switch, and the zero-argument `AddErrorApi()` overload.
-5. At runtime `ErrorApiOperationTransformer` looks the endpoint up by normalized route + method and fills
+5. At runtime `ErrorApiOperationTransformer` looks the endpoint up by normalized route + method +
+   `ApiDescription.GroupName` (exact group, then the ungrouped entry, and a null group also matches a
+   route living in exactly one group) and fills
    in the responses; `TypeScriptContractWriter` renders the same model as a TS module.
 
 ## Invariants

@@ -150,6 +150,7 @@ internal static class ControllerScanner
             var codes = new EquatableArray<string>(walk.Codes.ToImmutableArray());
             var display = action.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat);
             var location = LocationInfo.From(node);
+            var group = ExplorerGroup(action) ?? ExplorerGroup(controller);
 
             foreach (var (verb, template) in routes)
             {
@@ -177,7 +178,8 @@ internal static class ControllerScanner
                             DeclaredPattern: replaced,
                             HandlerDisplay: display,
                             ErrorCodes: codes,
-                            Location: location),
+                            Location: location,
+                            Group: group),
                         walk.UnresolvedDispatches.FirstOrDefault(),
                         EndpointScanner.ReturnsResult(action),
                         suppressed,
@@ -282,6 +284,27 @@ internal static class ControllerScanner
 
             template = template.Substring(0, index) + value + template.Substring(index + token.Length);
         }
+    }
+
+    /// <summary>The group from <c>[ApiExplorerSettings(GroupName = ...)]</c>, if declared.</summary>
+    private static string? ExplorerGroup(ISymbol symbol)
+    {
+        foreach (var attribute in symbol.GetAttributes())
+        {
+            if (attribute.AttributeClass is { Name: "ApiExplorerSettingsAttribute" } cls
+                && IsMvcNamespace(cls.ContainingNamespace))
+            {
+                foreach (var named in attribute.NamedArguments)
+                {
+                    if (named.Key == "GroupName" && named.Value.Value is string group && group.Length > 0)
+                    {
+                        return group;
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     private static bool HasMvcAttribute(ISymbol symbol, string attributeName) =>

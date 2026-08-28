@@ -35,6 +35,9 @@ namespace ErrorApi.Generated
             public global::ErrorApi.ErrorDescriptor? FindErrorForInstance(object? instance) => null;
 
             public bool TryGetEndpointErrors(string httpMethod, string routePattern, out global::System.Collections.Generic.IReadOnlyList<global::ErrorApi.ErrorDescriptor> errors)
+                => TryGetEndpointErrors(httpMethod, routePattern, null, out errors);
+
+            public bool TryGetEndpointErrors(string httpMethod, string routePattern, string? group, out global::System.Collections.Generic.IReadOnlyList<global::ErrorApi.ErrorDescriptor> errors)
             {
                 errors = global::System.Array.Empty<global::ErrorApi.ErrorDescriptor>();
                 return false;
