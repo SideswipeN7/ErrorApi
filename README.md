@@ -32,8 +32,8 @@ dotnet run --project samples/Sample.Api
 
 `http://localhost:5080/swagger` · `http://localhost:5080/scalar` · `http://localhost:5080/openapi/v1.json` · `http://localhost:5080/openapi/errors.ts`
 
-The same API is built three more times, once per result library, so the difference is only ever the
-declaration style — the documents they produce are identical:
+The same API is built again and again — once per declaration style and endpoint surface — so the
+difference is only ever the style, and the documents they produce are identical:
 
 ```bash
 dotnet run --project samples/Sample.ErrorOr.Api      # :5081
@@ -746,7 +746,10 @@ dotnet test tests/ErrorApi.LanguageExt.Tests -p:LanguageExtTestVersion=4.4.0
 ```
 
 CI runs that as a matrix. The adapters are verified against ErrorOr 1.10.0 / 2.0.1 / 2.1.1,
-OneOf 3.0.263 / 3.0.271, LanguageExt.Core 4.4.0 / 4.4.9 and FluentResults 3.15.0 / 3.16.0.
+OneOf 3.0.263 / 3.0.271, LanguageExt.Core 4.4.0 / 4.4.9, FluentResults 3.15.0 / 3.16.0,
+Ardalis.Result 9.1.0 / 10.1.0 and CSharpFunctionalExtensions 3.4.3 / 3.7.0. language-ext **v5** has no
+stable release yet (5.0.0 is still in beta); a dedicated `ErrorApi.LanguageExt.V5` package is planned
+the moment it ships, and the v4 package will stay as it is.
 
 Working on this repository with a coding agent? [`AGENTS.md`](AGENTS.md) is the map: invariants, where each concern lives, and the checks that have to pass.
 
