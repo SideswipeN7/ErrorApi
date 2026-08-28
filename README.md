@@ -75,6 +75,10 @@ dotnet run --project samples/Sample.Toolbox.Api      # :5090, the toolbox: a sha
 dotnet run --project samples/Sample.Ardalis.Api      # :5091, Ardalis.Result with a factory catalog
 ```
 
+```bash
+dotnet run --project samples/Sample.Cfe.Api          # :5092, CSharpFunctionalExtensions Result<T, E>
+```
+
 One more runs the same pipeline through MediatR with a FluentValidation behaviour — and documents the
 behaviour's 400 on every endpoint with no attribute anywhere. See
 [pipeline behaviours are followed too](#pipeline-behaviours-are-followed-too).
@@ -400,6 +404,27 @@ code, then the `ResultStatus` alone — status mapped the way `Ardalis.Result.As
 (`Invalid` 400, `Error` 422), the status's name as the code. That last rung is deliberately weak: a
 failure without a catalog identity cannot be promised in a document, and the adapter README says so.
 
+### `ErrorApi.CSharpFunctionalExtensions`
+
+`Result<T, E>` is the sweet spot: the failure already **is** a type of your own, so that is where the
+catalog entry goes — annotate `E` (or its concrete cases) and the generated pattern switch resolves the
+instance at runtime.
+
+```csharp
+public abstract record OrderError;
+
+[ErrorApi.Error("Orders.NotFound", 404, Title = "Order not found")]
+public sealed record OrderNotFound(Guid Id) : OrderError;
+
+public Result<Order, OrderError> GetById(Guid id) =>
+    _orders.TryGetValue(id, out var order) ? order : new OrderNotFound(id);
+
+orders.MapGet("/{id:guid}", (Guid id, IOrderService s) => s.GetById(id).ToHttpResult());
+```
+
+`UnitResult<E>` maps to 204/problem. A string-error `Result<T>` resolves only when the string is a
+known catalog code; anything else is a 500 carrying the message, because a message is not a contract.
+
 ### How an adapter reaches the catalog
 
 Adapters never reflect. The generator emits a pattern switch over the annotated types and a switch over the codes:
@@ -684,6 +709,7 @@ samples/Sample.Controllers.Api  the same API on attribute-routed controllers
 samples/Sample.Shared.Errors    a class library: shared catalog + services, exports baked in at build
 samples/Sample.Toolbox.Api      consumes the library across the assembly boundary; the toolbox features
 samples/Sample.Ardalis.Api      the same API in Ardalis.Result, with a factory catalog
+samples/Sample.Cfe.Api          the same API in CSharpFunctionalExtensions Result<T, E>
 samples/Sample.Mediator.Validation.Api  MediatR + FluentValidation: the behaviour's 400 discovered on every endpoint
 samples/client              how the generated union is consumed
 ```

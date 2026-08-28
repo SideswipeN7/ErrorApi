@@ -10,6 +10,7 @@
     <Project Path="src/ErrorApi.LanguageExt/ErrorApi.LanguageExt.csproj" />
     <Project Path="src/ErrorApi.FluentResults/ErrorApi.FluentResults.csproj" />
     <Project Path="src/ErrorApi.ArdalisResult/ErrorApi.ArdalisResult.csproj" />
+    <Project Path="src/ErrorApi.CSharpFunctionalExtensions/ErrorApi.CSharpFunctionalExtensions.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ErrorApi.TestKit/ErrorApi.TestKit.csproj" />
@@ -19,6 +20,7 @@
     <Project Path="tests/ErrorApi.LanguageExt.Tests/ErrorApi.LanguageExt.Tests.csproj" />
     <Project Path="tests/ErrorApi.FluentResults.Tests/ErrorApi.FluentResults.Tests.csproj" />
     <Project Path="tests/ErrorApi.ArdalisResult.Tests/ErrorApi.ArdalisResult.Tests.csproj" />
+    <Project Path="tests/ErrorApi.CSharpFunctionalExtensions.Tests/ErrorApi.CSharpFunctionalExtensions.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Sample.Api/Sample.Api.csproj" />
@@ -32,6 +34,7 @@
     <Project Path="samples/Sample.Shared.Errors/Sample.Shared.Errors.csproj" />
     <Project Path="samples/Sample.Toolbox.Api/Sample.Toolbox.Api.csproj" />
     <Project Path="samples/Sample.Ardalis.Api/Sample.Ardalis.Api.csproj" />
+    <Project Path="samples/Sample.Cfe.Api/Sample.Cfe.Api.csproj" />
     <Project Path="samples/Sample.FluentResults.Api/Sample.FluentResults.Api.csproj" />
     <Project Path="samples/Sample.Mediator.Validation.Api/Sample.Mediator.Validation.Api.csproj" />
   </Folder>

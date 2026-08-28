@@ -18,7 +18,7 @@ that introduces reflection on the request path, is going the wrong way.
 
 ```bash
 dotnet build ErrorApi.slnx                       # must be warning-free
-dotnet test ErrorApi.slnx                        # 193 tests across six suites
+dotnet test ErrorApi.slnx                        # 200 tests across seven suites
 ERRORAPI_ACCEPT_SNAPSHOTS=1 dotnet test ErrorApi.slnx   # re-approve snapshots, then read the diff
 dotnet run --project samples/Sample.Api          # /swagger, /scalar, /openapi/v1.json, /openapi/errors.ts
 dotnet run --project samples/Sample.ErrorOr.Api  # and .OneOf. / .LanguageExt. — same API, same contract
@@ -35,10 +35,10 @@ over it during a normal build; an IL2026/IL3050 warning there is a real regressi
 | `src/ErrorApi.Abstractions` | `netstandard2.0;net10.0` | `Error`, `Result`/`Result<T>`, `[Error]`, `[ProducesError]`, `ErrorDescriptor`, `IErrorApiMetadata`, `RoutePattern`, `ErrorApiRuntime` |
 | `src/ErrorApi.Generator` | `netstandard2.0` | the generator: parsing, the call-graph walk, the emitters |
 | `src/ErrorApi.AspNetCore` | `net10.0` | `ToHttpResult()`, the OpenAPI operation transformer, the TypeScript writer, `AddErrorApi()`'s target |
-| `src/ErrorApi.{ErrorOr,OneOf,LanguageExt,FluentResults,ArdalisResult}` | `net10.0` | one adapter each, pinning that library's version |
+| `src/ErrorApi.{ErrorOr,OneOf,LanguageExt,FluentResults,ArdalisResult,CSharpFunctionalExtensions}` | `net10.0` | one adapter each, pinning that library's version |
 | `tests/ErrorApi.TestKit` | `net10.0` | the generator harness, the snapshot assertion, `FakeMetadata` |
 | `tests/ErrorApi.Generator.Tests` | `net10.0` | core snapshot and behaviour tests; references no result library |
-| `tests/ErrorApi.{ErrorOr,OneOf,LanguageExt,FluentResults,ArdalisResult}.Tests` | `net10.0` | one suite per adapter, version overridable |
+| `tests/ErrorApi.{ErrorOr,OneOf,LanguageExt,FluentResults,ArdalisResult,CSharpFunctionalExtensions}.Tests` | `net10.0` | one suite per adapter, version overridable |
 | `samples/Sample.Api` | `net10.0` | the reference end-to-end proof, and the only one with `PublishAot` |
 | `samples/Sample.{ErrorOr,OneOf,LanguageExt,Exceptions,Mediator,FluentResults,Wolverine,Controllers}.Api` | `net10.0` | the same API per style |
 | `samples/Sample.Shared.Errors` + `samples/Sample.Toolbox.Api` | `net10.0` | a shared catalog library and the API consuming it across the assembly boundary; also demos `ErrorMapping`, `ProducesError(typeof)`, `SuppressErrorApi`, `ToCreatedAtUri`, `errorapi_walk_depth` |
