@@ -71,6 +71,10 @@ dotnet run --project samples/Sample.Controllers.Api  # :5089, old-fashioned [Api
 dotnet run --project samples/Sample.Toolbox.Api      # :5090, the toolbox: a shared catalog consumed cross-assembly
 ```
 
+```bash
+dotnet run --project samples/Sample.Ardalis.Api      # :5091, Ardalis.Result with a factory catalog
+```
+
 One more runs the same pipeline through MediatR with a FluentValidation behaviour — and documents the
 behaviour's 400 on every endpoint with no attribute anywhere. See
 [pipeline behaviours are followed too](#pipeline-behaviours-are-followed-too).
@@ -371,6 +375,31 @@ Resolution goes by type first, through a generated pattern switch. Failing that 
 
 > **Naming note.** ErrorOr and language-ext both ship a type called `Error`. When both namespaces are imported, spell ours out as `[ErrorApi.Error(...)]` or add `using ErrorAttribute = ErrorApi.ErrorAttribute;`.
 
+### `ErrorApi.ArdalisResult`
+
+Ardalis.Result has no typed error and no code slot at all — a failure is a `ResultStatus` plus message
+strings. The identity therefore lives in a catalog of factory members, with the code carried where
+Ardalis has room for it: an error message, or `ValidationError.ErrorCode`.
+
+```csharp
+[ErrorCatalog("Orders")]
+public static class OrderErrors
+{
+    [ErrorApi.Error("Orders.NotFound", 404, Title = "Order not found")]
+    public static Result NotFound() => Result.NotFound("Orders.NotFound");
+}
+
+public Result<Order> GetById(Guid id) =>
+    _orders.TryGetValue(id, out var order) ? order : OrderErrors.NotFound();
+
+orders.MapGet("/{id:guid}", (Guid id, IOrderService s) => s.GetById(id).ToHttpResult());
+```
+
+Resolution: a `ValidationError.ErrorCode` the catalog knows, then an error message that is a known
+code, then the `ResultStatus` alone — status mapped the way `Ardalis.Result.AspNetCore` maps it
+(`Invalid` 400, `Error` 422), the status's name as the code. That last rung is deliberately weak: a
+failure without a catalog identity cannot be promised in a document, and the adapter README says so.
+
 ### How an adapter reaches the catalog
 
 Adapters never reflect. The generator emits a pattern switch over the annotated types and a switch over the codes:
@@ -654,6 +683,7 @@ samples/Sample.Wolverine.Api    the same API behind Wolverine, handlers matched 
 samples/Sample.Controllers.Api  the same API on attribute-routed controllers
 samples/Sample.Shared.Errors    a class library: shared catalog + services, exports baked in at build
 samples/Sample.Toolbox.Api      consumes the library across the assembly boundary; the toolbox features
+samples/Sample.Ardalis.Api      the same API in Ardalis.Result, with a factory catalog
 samples/Sample.Mediator.Validation.Api  MediatR + FluentValidation: the behaviour's 400 discovered on every endpoint
 samples/client              how the generated union is consumed
 ```

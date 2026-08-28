@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>ErrorApi.Generator.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);EAPI002;EAPI006;EAPI007</NoWarn>
+
+    <!-- The version of Ardalis.Result under test. Override it to run this suite against another release:
+         dotnet test tests/ErrorApi.ArdalisResult.Tests -p:ArdalisResultTestVersion=x.y.z -->
+    <ArdalisResultTestVersion Condition="'$(ArdalisResultTestVersion)' == ''">10.1.0</ArdalisResultTestVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Ardalis.Result" VersionOverride="$(ArdalisResultTestVersion)" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ErrorApi.TestKit\ErrorApi.TestKit.csproj" />
+    <ProjectReference Include="..\..\src\ErrorApi.ArdalisResult\ErrorApi.ArdalisResult.csproj" />
+  </ItemGroup>
+
+</Project>

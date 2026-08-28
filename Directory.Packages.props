@@ -21,6 +21,7 @@
     <PackageVersion Include="WolverineFx" Version="6.30.0" />
     <PackageVersion Include="WolverineFx.RuntimeCompilation" Version="6.30.0" />
     <PackageVersion Include="FluentResults" Version="3.16.0" />
+    <PackageVersion Include="Ardalis.Result" Version="10.1.0" />
     <PackageVersion Include="FluentValidation" Version="11.11.0" />
   </ItemGroup>
 
