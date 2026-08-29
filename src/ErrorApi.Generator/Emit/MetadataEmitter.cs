@@ -24,7 +24,8 @@ internal static class MetadataEmitter
         IReadOnlyList<DiscoveredError> errors,
         IReadOnlyList<EndpointModel> endpoints,
         IReadOnlyList<CatalogEntry> errorTypes,
-        IReadOnlyList<ReachabilityExport> reachability)
+        IReadOnlyList<ReachabilityExport> reachability,
+        string assemblyName = "")
     {
         var index = new Dictionary<string, int>(System.StringComparer.Ordinal);
         for (var i = 0; i < errors.Count; i++)
@@ -66,7 +67,57 @@ internal static class MetadataEmitter
             }
         }
 
+        // The public face of this assembly's model, under a namespace derived from the assembly name so
+        // two referenced assemblies never collide. This is what AddErrorApi(x => x.Include(...)) and
+        // IncludeFromAssemblies resolve — a consumer composes referenced models by writing
+        // `Other.Assembly.ErrorApiModel.Metadata`, statically and AOT-clean.
+        if (assemblyName.Length > 0)
+        {
+            writer.Line();
+            using (writer.Block($"namespace {SanitizeNamespace(assemblyName)}"))
+            {
+                writer.Line("/// <summary>This assembly's compile-time ErrorApi model, for composition by a consumer.</summary>");
+                using (writer.Block("public static class ErrorApiModel"))
+                {
+                    writer.Line("/// <summary>The model, as generated for this assembly.</summary>");
+                    writer.Line("public static global::ErrorApi.IErrorApiMetadata Metadata => global::ErrorApi.Generated.ErrorApiGenerated.Metadata;");
+                }
+            }
+        }
+
         return writer.ToString();
+    }
+
+    /// <summary>
+    /// The namespace derived from an assembly name. Kept in step with its runtime twin,
+    /// <c>ErrorApiOptions.SanitizeNamespace</c>, the same way the two <c>RoutePattern.Normalize</c>
+    /// copies are — change one, change both.
+    /// </summary>
+    private static string SanitizeNamespace(string assemblyName)
+    {
+        var builder = new System.Text.StringBuilder(assemblyName.Length);
+        var startOfSegment = true;
+
+        foreach (var c in assemblyName)
+        {
+            if (c == '.')
+            {
+                builder.Append('.');
+                startOfSegment = true;
+                continue;
+            }
+
+            var valid = char.IsLetterOrDigit(c) || c == '_' ? c : '_';
+            if (startOfSegment && char.IsDigit(valid))
+            {
+                builder.Append('_');
+            }
+
+            builder.Append(valid);
+            startOfSegment = false;
+        }
+
+        return builder.ToString();
     }
 
     private static void WriteErrorTable(SourceWriter writer, IReadOnlyList<DiscoveredError> errors)
@@ -332,6 +383,12 @@ internal static class MetadataEmitter
                 writer.Line("public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddErrorApi(");
                 writer.Line("    this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)");
                 writer.Line("    => global::ErrorApi.AspNetCore.ErrorApiRegistration.Register(services, global::ErrorApi.Generated.ErrorApiGenerated.Metadata);");
+                writer.Line();
+                writer.Line("/// <summary>The configurable form: compose the models of referenced assemblies with <c>x.Include(...)</c>.</summary>");
+                writer.Line("public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddErrorApi(");
+                writer.Line("    this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services,");
+                writer.Line("    global::System.Action<global::ErrorApi.AspNetCore.ErrorApiOptions> configure)");
+                writer.Line("    => global::ErrorApi.AspNetCore.ErrorApiRegistration.Register(services, global::ErrorApi.Generated.ErrorApiGenerated.Metadata, configure);");
             }
         }
 

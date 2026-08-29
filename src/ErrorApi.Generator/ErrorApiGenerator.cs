@@ -98,7 +98,8 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
             Errors: errors.ToEquatableArray(),
             Endpoints: scan.Endpoints.ToEquatableArray(),
             Diagnostics: diagnostics.ToEquatableArray(),
-            Reachability: reachability.ToEquatableArray());
+            Reachability: reachability.ToEquatableArray(),
+            AssemblyName: compilation.AssemblyName ?? string.Empty);
     }
 
     /// <summary>
@@ -170,7 +171,8 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
                 model.Errors.AsImmutableArray(),
                 model.Endpoints.AsImmutableArray(),
                 entries,
-                model.Reachability.AsImmutableArray()));
+                model.Reachability.AsImmutableArray(),
+                model.AssemblyName));
 
         if (model.HasRegistrationType)
         {

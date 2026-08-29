@@ -607,6 +607,20 @@ explicit project-file knob when you want the trust spelled out:
 `.editorconfig` works too (`errorapi_export_reachability = false`); the project file wins when both
 are set.
 
+The runtime has a composable twin. Every assembly that runs the generator exposes its model as
+`<AssemblyName>.ErrorApiModel.Metadata`, and the API composes them explicitly:
+
+```csharp
+builder.Services.AddErrorApi(x => x.Include(
+    MyProject.Domain.ErrorApiModel.Metadata,
+    MyProject.Application.ErrorApiModel.Metadata));
+```
+
+The host's own model answers first; the included ones fill in what it cannot know — above all their
+**instance-type switches**, so a failure whose type is declared in Domain resolves by instance in the
+API process. `x.IncludeFromAssemblies(typeof(SomeDomainType).Assembly)` is the reflection convenience
+of the same thing (startup-only; prefer `Include` under trimming or native AOT).
+
 A referenced assembly that does **not** run the generator has nothing to export, and stays a boundary —
 `EAPI009` names it, `[ProducesError]` covers it. `samples/Sample.Shared.Errors` + `samples/Sample.Toolbox.Api`
 show the whole round trip live, body-inferred codes and both knobs included.

@@ -18,7 +18,7 @@ that introduces reflection on the request path, is going the wrong way.
 
 ```bash
 dotnet build ErrorApi.slnx                       # must be warning-free
-dotnet test ErrorApi.slnx                        # 209 tests across eight suites
+dotnet test ErrorApi.slnx                        # 215 tests across eight suites
 ERRORAPI_ACCEPT_SNAPSHOTS=1 dotnet test ErrorApi.slnx   # re-approve snapshots, then read the diff
 dotnet run --project samples/Sample.Api          # /swagger, /scalar, /openapi/v1.json, /openapi/errors.ts
 dotnet run --project samples/Sample.ErrorOr.Api  # and .OneOf. / .LanguageExt. — same API, same contract

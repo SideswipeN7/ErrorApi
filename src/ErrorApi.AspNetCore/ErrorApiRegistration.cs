@@ -25,4 +25,27 @@ public static class ErrorApiRegistration
 
         return services;
     }
+
+    /// <summary>
+    /// The configurable form: the host assembly's model first, then whatever the options include —
+    /// composed into one <see cref="CompositeErrorApiMetadata"/> where the first answer wins.
+    /// </summary>
+    public static IServiceCollection Register(IServiceCollection services, IErrorApiMetadata metadata, Action<ErrorApiOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        ArgumentNullException.ThrowIfNull(metadata);
+
+        var options = new ErrorApiOptions();
+        configure(options);
+
+        if (options.Included.Count == 0)
+        {
+            return Register(services, metadata);
+        }
+
+        var models = new List<IErrorApiMetadata>(options.Included.Count + 1) { metadata };
+        models.AddRange(options.Included);
+
+        return Register(services, new CompositeErrorApiMetadata(models));
+    }
 }
