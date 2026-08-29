@@ -18,7 +18,7 @@ that introduces reflection on the request path, is going the wrong way.
 
 ```bash
 dotnet build ErrorApi.slnx                       # must be warning-free
-dotnet test ErrorApi.slnx                        # 215 tests across eight suites
+dotnet test ErrorApi.slnx                        # 229 tests across nine suites
 ERRORAPI_ACCEPT_SNAPSHOTS=1 dotnet test ErrorApi.slnx   # re-approve snapshots, then read the diff
 dotnet run --project samples/Sample.Api          # /swagger, /scalar, /openapi/v1.json, /openapi/errors.ts
 dotnet run --project samples/Sample.ErrorOr.Api  # and .OneOf. / .LanguageExt. — same API, same contract
@@ -39,6 +39,7 @@ over it during a normal build; an IL2026/IL3050 warning there is a real regressi
 | `tests/ErrorApi.TestKit` | `net10.0` | the generator harness, the snapshot assertion, `FakeMetadata` |
 | `tests/ErrorApi.Generator.Tests` | `net10.0` | core snapshot and behaviour tests; references no result library |
 | `tests/ErrorApi.{ErrorOr,OneOf,LanguageExt,LanguageExt.V5,FluentResults,ArdalisResult,CSharpFunctionalExtensions}.Tests` | `net10.0` | one suite per adapter, version overridable |
+| `tests/ErrorApi.Integration.Tests` | `net10.0` | three samples under `WebApplicationFactory` (aliased `ProjectReference`s): live OpenAPI, live problem responses, the served TS contract |
 | `samples/Sample.Api` | `net10.0` | the reference end-to-end proof, and the only one with `PublishAot` |
 | `samples/Sample.{ErrorOr,OneOf,LanguageExt,Exceptions,Mediator,FluentResults,Wolverine,Controllers}.Api` | `net10.0` | the same API per style |
 | `samples/Sample.Shared.Errors` + `samples/Sample.Toolbox.Api` | `net10.0` | a shared catalog library and the API consuming it across the assembly boundary; also demos `ErrorMapping`, `ProducesError(typeof)`, `SuppressErrorApi`, `ToCreatedAtUri`, `errorapi_walk_depth` |
@@ -65,9 +66,15 @@ The generator does **not** reference `ErrorApi.Abstractions`. It matches attribu
    the walk has to agree with the catalog it is walking towards; a change to one order without the
    other silently empties endpoint contracts.
 2. **`EndpointScanner`** resolves each `Map*` call site: route template (including `MapGroup` prefixes
-   followed back through locals), HTTP method, and handler expression. **`ControllerScanner`** is the
-   second endpoint surface: attribute-routed `ControllerBase`/`[ApiController]` actions, with MVC's
-   token and rooted-template rules, feeding the same merge.
+   followed back through locals), HTTP method, handler expression, and the API description group —
+   `WithGroupName` literals, and Asp.Versioning literals (`HasApiVersion`/`MapToApiVersion`/
+   `new ApiVersion(...)`, version sets followed into locals) synthesized to the `'v'VVV` shape. The
+   same route mapped twice with nothing telling the mappings apart merges and reports `EAPI011`.
+   **`ControllerScanner`** is the second endpoint surface: attribute-routed
+   `ControllerBase`/`[ApiController]` actions, with MVC's token and rooted-template rules, inherited
+   actions/base `[Route]`/override attributes walked up the base chain, feeding the same merge. One
+   `ErrorReachabilityWalker` instance serves the scans *and* the reachability export, so its caches are
+   built once per build — keep passing it down instead of constructing a second one.
 3. **`ErrorReachabilityWalker`** walks from the handler through the call graph — into source bodies, local
    functions, and **through interface and virtual dispatch** to implementations in the compilation —
    collecting `[Error]` member reads, `[Error]` type constructions, and `[ProducesError]` declarations.
@@ -81,8 +88,8 @@ The generator does **not** reference `ErrorApi.Abstractions`. It matches attribu
    **`Emit/MetadataEmitter`** writes the descriptor table, the endpoint map, the code switch, the
    instance-type switch, and the zero-argument `AddErrorApi()` overload.
 5. At runtime `ErrorApiOperationTransformer` looks the endpoint up by normalized route + method +
-   `ApiDescription.GroupName` (exact group, then the ungrouped entry, and a null group also matches a
-   route living in exactly one group) and fills
+   `ApiDescription.GroupName` (exact group matched through `EndpointGroup.Normalize`, then the
+   ungrouped entry, and a null group also matches a route living in exactly one group) and fills
    in the responses; `TypeScriptContractWriter` renders the same model as a TS module.
 
 ## Invariants
@@ -92,7 +99,10 @@ The generator does **not** reference `ErrorApi.Abstractions`. It matches attribu
   runtime, the answer belongs in the generator instead.
 - **`RoutePattern.Normalize` exists twice** — once in `Abstractions` for runtime, once as
   `Helpers/RouteNormalizer` for the generator, because the generator cannot reference the runtime
-  assembly. `RouteNormalizationTests` pins the copies together. Change one, change both.
+  assembly. `RouteNormalizationTests` pins the copies together. Change one, change both. The same twin
+  pattern applies to `EndpointGroup.Normalize` / `Helpers/GroupNormalizer` (pinned by
+  `EndpointGroupTests.The_group_normalizer_twins_agree`) and to `ErrorApiOptions.SanitizeNamespace` /
+  `MetadataEmitter.SanitizeNamespace` (pinned by `CompositionTests`).
 - **Error codes are unique; statuses are not.** Two entries may share `422`; `EAPI001` fires only on a
   duplicated code. The OpenAPI transformer groups by status and lists every code in `code.enum`.
 - **Generated code is emitted for the user's assembly**, so it may reference `ErrorApi.AspNetCore` types
@@ -115,9 +125,15 @@ The generator does **not** reference `ErrorApi.Abstractions`. It matches attribu
 
 ## Testing
 
-Four suites, and the split is deliberate. `ErrorApi.Generator.Tests` references **no** result library, so
+Nine suites, and the split is deliberate. `ErrorApi.Generator.Tests` references **no** result library, so
 it proves the core stands on its own. Each adapter gets its own project referencing exactly one library,
-which keeps a version bump from leaking anywhere else.
+which keeps a version bump from leaking anywhere else. `ErrorApi.Integration.Tests` boots three samples
+in-process (`WebApplicationFactory`, aliased `ProjectReference`s to keep the `Program` classes apart)
+and asserts against live documents and responses — the end-to-end claims are gates, not manual curls.
+
+Reachability-export cost, measured once (2026-08): a synthetic 200-type / ~1,200-public-member library
+builds in the same time with `ErrorApiExportReachability` on and off (hot builds ~1.7–2.2 s either
+way) — the shared walker caches keep the export within build noise. Re-measure before optimizing.
 
 `GeneratorHarness` (in `ErrorApi.TestKit`) compiles source snippets against the assemblies that test
 process already runs on, so each suite exercises the real surface of its own library rather than stubs.

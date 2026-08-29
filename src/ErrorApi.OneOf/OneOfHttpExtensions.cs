@@ -155,3 +155,4 @@ public static class OneOfHttpExtensions
     public static IResult Problem<TError>(TError error) =>
         ErrorApiRuntime.Resolve(error, fallbackTitle: typeof(TError).Name).ToProblem();
 }
+

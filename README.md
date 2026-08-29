@@ -166,7 +166,10 @@ public sealed class OrdersController(IOrderStore store) : ControllerBase
 
 `ToActionResult()`/`ToCreatedActionResult(...)` speak MVC's own vocabulary and produce the identical
 problem body, so mixing controllers and Minimal APIs in one application yields one consistent document.
-Conventional (non-attribute) routing has no compile-time template to read and stays out of scope.
+Inheritance follows MVC's rules: actions on a shared base controller are scanned for every derived
+controller, a `[Route]` on the base applies when the derived class declares none, and an override
+without its own verb attribute inherits the overridden method's. Conventional (non-attribute) routing
+has no compile-time template to read and stays out of scope.
 
 ---
 
@@ -476,11 +479,23 @@ app.MapGet("/orders/{id:guid}", V2Handler).WithGroupName("v2");   // documents 4
 ```
 
 The group comes from `WithGroupName(...)` on the endpoint or its `MapGroup` chain, or
-`[ApiExplorerSettings(GroupName = ...)]` on a controller or action. Resolution at document-build time:
-the exact group first, then the ungrouped entry, and a null group also matches a route that lives in
-exactly one group — so a purely cosmetic `WithGroupName` never hides an endpoint's errors. When two
-groups share a route, the TypeScript contract tells them apart too: `GetOrdersByIdV1Error` /
-`GetOrdersByIdV2Error`, keyed as `"GET /orders/{id} @v1"`.
+`[ApiExplorerSettings(GroupName = ...)]` on a controller or action. **Asp.Versioning literals count
+too**: `MapToApiVersion(2)`, `HasApiVersion(new ApiVersion(1))` — on the endpoint, on the group
+builder, or inside a version set built in a local — become the group the conventional `'v'VVV` format
+produces (`v1`, `v1.1`). An endpoint carrying several versions stays ungrouped on purpose: it is one
+handler with one contract in every document, and the fallback below serves them all.
+
+Group names are matched through a small normalization (`EndpointGroup.Normalize`), so the compile-time
+`v1` finds the runtime group whether your `GroupNameFormat` renders it as `v1`, `V1` or the default
+`1.0`. Resolution at document-build time: the exact (normalized) group first, then the ungrouped entry,
+and a null group also matches a route that lives in exactly one group — so a purely cosmetic
+`WithGroupName` never hides an endpoint's errors. When two groups share a route, the TypeScript
+contract tells them apart too: `GetOrdersByIdV1Error` / `GetOrdersByIdV2Error`, keyed as
+`"GET /orders/{id} @v1"`.
+
+When the same route is mapped more than once and *nothing* tells the mappings apart, the contracts
+merge into one entry and `EAPI011` says so — because two API versions documented as one union is the
+silent failure mode of versioning. If the mappings really are one contract, suppress it where it fires.
 
 ### Endpoints behind a mediator
 
@@ -570,8 +585,8 @@ orders.MapGet("/", [ProducesError("Common.RateLimited")] (IOrderService service)
 The walk reads source, so it used to stop at an assembly boundary: an `OrderService` implemented in
 your Application project was invisible to the Api project's generator. Now the boundary carries the
 knowledge across. A project that runs the generator and maps no endpoints is a library, and a library's
-walk starts at its own public surface: every public method, and every message its handlers accept, gets
-its reachable codes baked in as
+walk starts at its own public surface: every public method, every public property (reading one runs
+its getter), and every message its handlers accept, gets its reachable codes baked in as
 
 ```csharp
 [assembly: ReachabilityExport("M:App.IOrderService.GetById(System.Guid)", "Orders.NotFound")]
@@ -622,8 +637,14 @@ API process. `x.IncludeFromAssemblies(typeof(SomeDomainType).Assembly)` is the r
 of the same thing (startup-only; prefer `Include` under trimming or native AOT).
 
 A referenced assembly that does **not** run the generator has nothing to export, and stays a boundary —
-`EAPI009` names it, `[ProducesError]` covers it. `samples/Sample.Shared.Errors` + `samples/Sample.Toolbox.Api`
-show the whole round trip live, body-inferred codes and both knobs included.
+`EAPI009` names it, `[ProducesError]` covers it. The library side has the same guard one boundary
+earlier: when a library's *own* walk stops at a dispatcher it cannot see past, `EAPI012` reports that
+the export it is baking is incomplete, instead of letting the consumer read it as complete.
+`samples/Sample.Shared.Errors` + `samples/Sample.Toolbox.Api` show the whole round trip live,
+body-inferred codes and both knobs included.
+
+Calling `AddErrorApi()` twice — two registering modules in one host — keeps the **first** model, in DI
+and on the ambient static alike; composing deliberately is what `x.Include(...)` is for.
 
 ### Errors nobody can return
 
@@ -658,6 +679,8 @@ in a project of its own and the rule has nothing to check it against.
 | `EAPI008` | Warning | An explicit code disagrees with the `code:` literal in the member's body. |
 | `EAPI009` | Warning | The walk stopped at a dispatcher and the endpoint documents no failures. |
 | `EAPI010` | Warning | A declared error is not returned by any endpoint in the project. |
+| `EAPI011` | Warning | The same route is mapped more than once with no distinct API description groups, so the contracts merged into one. |
+| `EAPI012` | Info | A reachability export stopped at a dispatcher; what this library bakes for its consumers is incomplete. |
 
 Generator diagnostics are not suppressible with `#pragma`. For a deliberate one-off, silence the rule where it fires — `[SuppressErrorApi("EAPI010")]` on the member, or on the mapping method / handler for the endpoint rules — and keep `.editorconfig` / `<NoWarn>` for project-wide tuning.
 
@@ -725,6 +748,7 @@ src/ErrorApi.FluentResults  adapter, pinned to FluentResults 3.16.x
 tests/ErrorApi.TestKit      the generator harness, the snapshot assertion, a hand-built model
 tests/…Generator.Tests      core tests — no result library referenced, so they pass on the core alone
 tests/ErrorApi.*.Tests      one suite per adapter, each pinning its own library version
+tests/…Integration.Tests    three samples running under WebApplicationFactory: live documents, live problems
 samples/Sample.Api          the reference API: route groups, interface dispatch, [ProducesError], AOT
 samples/Sample.ErrorOr.Api  the same API in ErrorOr, with codes read out of the factory calls
 samples/Sample.OneOf.Api    the same API as a union, with the failure cases carrying [Error]
@@ -758,6 +782,11 @@ ERRORAPI_ACCEPT_SNAPSHOTS=1 dotnet test ErrorApi.slnx
 
 Then read the diff. That diff is the review.
 
+The integration suite boots `Sample.Api`, `Sample.Controllers.Api` and `Sample.Toolbox.Api` in-process
+and asserts against the live `/openapi/v1.json`, a live `application/problem+json` response carrying
+the catalog code, and the served TypeScript contract — the end-to-end claims are CI gates, not manual
+checks.
+
 Each adapter has its own suite, referencing only its own library, so a version bump cannot leak into
 anything else. The version under test is a build property, which is how one suite covers a range:
 
@@ -788,5 +817,5 @@ Working on this repository with a coding agent? [`AGENTS.md`](AGENTS.md) is the 
 - Route templates must be compile-time constants (`EAPI002` tells you when they are not).
 - Discovery follows source within the compilation — plus the [reachability another ErrorApi project exported](#discovery-across-project-boundaries). A referenced assembly that does *not* run the generator stays opaque: its failures need `[ProducesError]`, and `[assembly: ErrorMapping]` gives such a type a catalog entry, but not an endpoint.
 - Following a message past a dispatcher is a heuristic. It matches: a source type implementing a generic interface constructed with the message; a `*Handler`/`*Consumer` type with a `Handle`/`Consume` method taking the message (Wolverine's convention); and source types generic over the request implementing an interface from the dispatcher's assembly (pipeline behaviours). A handler resolved some other way — by name, by a registry — is still not found, and `EAPI009` reports it, on partial contracts too.
-- Endpoints are matched by normalized route template, HTTP method and API description group — `WithGroupName(...)` or `[ApiExplorerSettings(GroupName = ...)]` tells two versions of one route apart, which covers header-versioned APIs that split their documents by group. Host-based routing (`RequireHost`) has no reflection in `ApiDescription` and still shares one entry.
+- Endpoints are matched by normalized route template, HTTP method and API description group — `WithGroupName(...)`, `[ApiExplorerSettings(GroupName = ...)]` or an Asp.Versioning literal (`MapToApiVersion`, `HasApiVersion`, a version set in a local) tells two versions of one route apart. A version computed at runtime is still invisible; when that leaves two mappings of one route indistinguishable, `EAPI011` reports the merge instead of letting it pass silently. Host-based routing (`RequireHost`) has no reflection in `ApiDescription` and still shares one entry.
 - The call walk is bounded at a depth of 12 by default; an unusually layered application can raise it with `errorapi_walk_depth = 20` in `.editorconfig`.
