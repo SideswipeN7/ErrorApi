@@ -8,6 +8,11 @@
 
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)generated</CompilerGeneratedFilesOutputPath>
+
+    <!-- Producer-side knob, spelled out although it is already the default for a project with no
+         endpoints. This project knows nothing about the API that consumes it — the property only says
+         "bake what my members can reach into my own assembly". -->
+    <ErrorApiExportReachability>true</ErrorApiExportReachability>
   </PropertyGroup>
 
   <ItemGroup>

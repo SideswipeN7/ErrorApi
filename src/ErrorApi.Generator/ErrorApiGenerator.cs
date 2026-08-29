@@ -79,7 +79,8 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
             .GroupBy(e => e.ErrorTypeDisplay!, System.StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.First().Code, System.StringComparer.Ordinal);
 
-        var scan = EndpointScanner.Scan(compilation, mapCalls, configuration, mappedTypes, diagnostics, cancellationToken);
+        var includeAssemblies = IncludeAssemblies(configuration);
+        var scan = EndpointScanner.Scan(compilation, mapCalls, configuration, mappedTypes, diagnostics, includeAssemblies, cancellationToken);
         var errors = MergeErrors(entries, scan.DiscoveredErrors);
         ReportUnknownCodes(scan.Endpoints, errors, diagnostics);
         ReportUnreachableErrors(entries, scan.Endpoints, diagnostics);
@@ -87,7 +88,7 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
         // A compilation with no endpoints is a library: its walk starts at its own public surface, and
         // the result is baked in for the compilation that has the endpoints to read back.
         var reachability = ExportsReachability(configuration, compilation, hasEndpoints: scan.Endpoints.Count > 0)
-            ? ReachabilityExporter.Compute(compilation, mappedTypes, cancellationToken)
+            ? ReachabilityExporter.Compute(compilation, mappedTypes, includeAssemblies, cancellationToken)
             : new List<ReachabilityExport>();
 
         return new GenerationModel(
@@ -102,11 +103,18 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
 
     /// <summary>
     /// Whether this compilation exports its reachability. On by default for a compilation with no
-    /// endpoints — that is a library, and its whole point of running the generator is to be consumed;
-    /// <c>errorapi_export_reachability</c> in .editorconfig overrides in either direction.
+    /// endpoints — that is a library, and its whole point of running the generator is to be consumed.
+    /// <c>&lt;ErrorApiExportReachability&gt;</c> in the project file overrides in either direction, and
+    /// so does <c>errorapi_export_reachability</c> in .editorconfig; the project file wins.
     /// </summary>
     private static bool ExportsReachability(AnalyzerConfigOptionsProvider configuration, Compilation compilation, bool hasEndpoints)
     {
+        if (configuration.GlobalOptions.TryGetValue("build_property.ErrorApiExportReachability", out var property)
+            && bool.TryParse(property, out var fromProject))
+        {
+            return fromProject;
+        }
+
         var tree = compilation.SyntaxTrees.FirstOrDefault();
         if (tree is not null
             && configuration.GetOptions(tree).TryGetValue("errorapi_export_reachability", out var value)
@@ -116,6 +124,30 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
         }
 
         return !hasEndpoints;
+    }
+
+    /// <summary>
+    /// Which referenced assemblies the walk may read exports and catalogs from —
+    /// <c>&lt;ErrorApiIncludeAssemblies&gt;MyProject.Domain;MyProject.*&lt;/ErrorApiIncludeAssemblies&gt;</c>
+    /// in the project file. Unset means every reference, which is the default a layered application
+    /// rarely needs to change; the property exists so the API project can say explicitly which layers
+    /// it trusts the contract to come from.
+    /// </summary>
+    private static IReadOnlyList<string>? IncludeAssemblies(AnalyzerConfigOptionsProvider configuration)
+    {
+        if (!configuration.GlobalOptions.TryGetValue("build_property.ErrorApiIncludeAssemblies", out var value)
+            || string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var patterns = value
+            .Split(new[] { ';' }, System.StringSplitOptions.RemoveEmptyEntries)
+            .Select(p => p.Trim())
+            .Where(p => p.Length > 0)
+            .ToList();
+
+        return patterns.Count == 0 ? null : patterns;
     }
 
     private static void Emit(SourceProductionContext context, GenerationModel model)

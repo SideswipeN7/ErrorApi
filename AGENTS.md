@@ -18,7 +18,7 @@ that introduces reflection on the request path, is going the wrong way.
 
 ```bash
 dotnet build ErrorApi.slnx                       # must be warning-free
-dotnet test ErrorApi.slnx                        # 207 tests across eight suites
+dotnet test ErrorApi.slnx                        # 209 tests across eight suites
 ERRORAPI_ACCEPT_SNAPSHOTS=1 dotnet test ErrorApi.slnx   # re-approve snapshots, then read the diff
 dotnet run --project samples/Sample.Api          # /swagger, /scalar, /openapi/v1.json, /openapi/errors.ts
 dotnet run --project samples/Sample.ErrorOr.Api  # and .OneOf. / .LanguageExt. — same API, same contract
@@ -205,7 +205,9 @@ renders best on GitHub itself.
   loading (`0x800711C7`, "Zasady kontroli aplikacji zablokowały ten plik") — tests then fail in bulk
   with `FileLoadException`, most often on `ErrorApi.Abstractions.dll`. The verdict is per file hash and
   looks random. Fix: append a blank line to any source file of the blocked project, rebuild, retry —
-  a new hash usually passes on the first attempt. It can also block a DLL straight from the NuGet
+  a new hash usually passes on the first attempt. A persistent EPERM lock on a repo file (README.md
+  seen) can be the Roslyn/MSBuild build server — `dotnet build-server shutdown` frees it. It can also
+  block a DLL straight from the NuGet
   cache (seen with the unsigned language-ext 5.x betas) — package bytes must not be touched, so retry
   later or lean on CI, which has no SAC. Never mistake this for a real test failure, and do not try to
   change the policy.

@@ -585,17 +585,31 @@ and the referenced catalog's `[Error]` attributes supply the full descriptors, s
 response is as rich as a same-assembly one. Exports compose transitively: each assembly's walk reads
 the exports of the assemblies *it* references.
 
-Nothing to configure — referencing an ErrorApi project is the whole setup. `.editorconfig` overrides in
-either direction:
+The dependency direction is the layered one, untouched: **`MyProject.Domain` knows nothing about
+`MyProject.API`.** Domain and Application reference only `ErrorApi.Abstractions` and the generator;
+each bakes its exports into its *own* assembly, and knowledge flows strictly along the references —
+`Domain → Application → API` — because the export a project reads was computed while reading the
+exports of the assemblies *it* references.
 
-```ini
-[*.cs]
-errorapi_export_reachability = false   # or true, to force exports from a project that maps endpoints
+Nothing to configure — referencing an ErrorApi project is the whole setup — but both sides have an
+explicit project-file knob when you want the trust spelled out:
+
+```xml
+<!-- MyProject.Domain.csproj — producer side: bake what my members can reach into my own assembly.
+     Already the default for a project that maps no endpoints. -->
+<ErrorApiExportReachability>true</ErrorApiExportReachability>
+
+<!-- MyProject.API.csproj — consumer side: which referenced assemblies the walk may read exports and
+     catalogs from. Unset means all references; exact names or a trailing-star prefix. -->
+<ErrorApiIncludeAssemblies>MyProject.Domain;MyProject.Application</ErrorApiIncludeAssemblies>
 ```
+
+`.editorconfig` works too (`errorapi_export_reachability = false`); the project file wins when both
+are set.
 
 A referenced assembly that does **not** run the generator has nothing to export, and stays a boundary —
 `EAPI009` names it, `[ProducesError]` covers it. `samples/Sample.Shared.Errors` + `samples/Sample.Toolbox.Api`
-show the whole round trip live, body-inferred codes included.
+show the whole round trip live, body-inferred codes and both knobs included.
 
 ### Errors nobody can return
 

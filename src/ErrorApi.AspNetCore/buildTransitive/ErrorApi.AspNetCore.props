@@ -1,0 +1,18 @@
+<Project>
+
+  <!-- Surfaces ErrorApi's MSBuild-level configuration to the source generator as build_property.*
+       analyzer options:
+
+         <ErrorApiExportReachability>true|false</ErrorApiExportReachability>
+             Producer side. Whether this project bakes [assembly: ReachabilityExport] into its own
+             assembly for consumers to read. Defaults to on for a project that maps no endpoints.
+
+         <ErrorApiIncludeAssemblies>MyProject.Domain;MyProject.*</ErrorApiIncludeAssemblies>
+             Consumer side. Restricts which referenced assemblies the walk reads exports and catalogs
+             from — exact names or a trailing-star prefix, semicolon-separated. Empty means all. -->
+  <ItemGroup>
+    <CompilerVisibleProperty Include="ErrorApiExportReachability" />
+    <CompilerVisibleProperty Include="ErrorApiIncludeAssemblies" />
+  </ItemGroup>
+
+</Project>

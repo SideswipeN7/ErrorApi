@@ -8,6 +8,11 @@
 
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)generated</CompilerGeneratedFilesOutputPath>
+
+    <!-- Consumer-side knob: which referenced assemblies the walk may read exports and catalogs from.
+         Unset means all references; naming the layers makes the trust explicit — the layered
+         Domain <- Application <- API shape, where only the API decides what it includes. -->
+    <ErrorApiIncludeAssemblies>Sample.Shared.Errors</ErrorApiIncludeAssemblies>
   </PropertyGroup>
 
   <ItemGroup>

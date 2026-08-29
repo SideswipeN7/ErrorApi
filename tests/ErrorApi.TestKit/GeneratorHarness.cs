@@ -66,7 +66,17 @@ public static class GeneratorHarness
     public static GeneratorOutput Run(params string[] sources) => Run([], sources);
 
     /// <summary>Runs the generator over <paramref name="sources"/> with additional references in scope.</summary>
-    public static GeneratorOutput Run(IReadOnlyList<MetadataReference> extraReferences, params string[] sources)
+    public static GeneratorOutput Run(IReadOnlyList<MetadataReference> extraReferences, params string[] sources) =>
+        Run(extraReferences, options: null, sources);
+
+    /// <summary>
+    /// Runs the generator with analyzer config options in play — <c>build_property.*</c> entries stand
+    /// in for MSBuild properties, plain keys for .editorconfig ones.
+    /// </summary>
+    public static GeneratorOutput Run(
+        IReadOnlyList<MetadataReference> extraReferences,
+        IReadOnlyDictionary<string, string>? options,
+        params string[] sources)
     {
         var trees = sources
             .Select((text, index) => CSharpSyntaxTree.ParseText(text, ParseOptions, path: $"Source{index}.cs"))
@@ -79,7 +89,10 @@ public static class GeneratorHarness
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
 
         var driver = CSharpGeneratorDriver
-            .Create([new ErrorApiGenerator().AsSourceGenerator()], parseOptions: ParseOptions)
+            .Create(
+                [new ErrorApiGenerator().AsSourceGenerator()],
+                parseOptions: ParseOptions,
+                optionsProvider: options is null ? null : new TestOptionsProvider(options))
             .RunGeneratorsAndUpdateCompilation(compilation, out var updated, out _);
 
         var result = driver.GetRunResult().Results.Single();
@@ -180,6 +193,35 @@ public static class GeneratorHarness
         }
 
         return output;
+    }
+
+    /// <summary>Dictionary-backed analyzer options: the same bag answers globally and per tree.</summary>
+    private sealed class TestOptionsProvider(IReadOnlyDictionary<string, string> values)
+        : Microsoft.CodeAnalysis.Diagnostics.AnalyzerConfigOptionsProvider
+    {
+        private readonly TestOptions _options = new(values);
+
+        public override Microsoft.CodeAnalysis.Diagnostics.AnalyzerConfigOptions GlobalOptions => _options;
+
+        public override Microsoft.CodeAnalysis.Diagnostics.AnalyzerConfigOptions GetOptions(SyntaxTree tree) => _options;
+
+        public override Microsoft.CodeAnalysis.Diagnostics.AnalyzerConfigOptions GetOptions(AdditionalText textFile) => _options;
+
+        private sealed class TestOptions(IReadOnlyDictionary<string, string> values)
+            : Microsoft.CodeAnalysis.Diagnostics.AnalyzerConfigOptions
+        {
+            public override bool TryGetValue(string key, out string value)
+            {
+                if (values.TryGetValue(key, out var found))
+                {
+                    value = found;
+                    return true;
+                }
+
+                value = null!;
+                return false;
+            }
+        }
     }
 
     /// <summary>

@@ -1,4 +1,4 @@
-# ErrorApi options for this project. Exporting reachability is already the default for a project
-# that maps no endpoints — spelled out here so the sample shows where the switch lives.
+# ErrorApi options for this project. Both channels work — the csproj property
+# <ErrorApiExportReachability> (used here) wins over the .editorconfig key below.
 [*.cs]
-errorapi_export_reachability = true
+# errorapi_export_reachability = true

@@ -19,9 +19,15 @@ internal static class ReachabilityExporter
     public static List<ReachabilityExport> Compute(
         Compilation compilation,
         IReadOnlyDictionary<string, string> mappedTypes,
+        IReadOnlyList<string>? includeAssemblies,
         System.Threading.CancellationToken cancellationToken)
     {
-        var walker = new ErrorReachabilityWalker(compilation) { MappedTypes = mappedTypes };
+        // The filter applies here too, so a library's transitive reads honour its own project file.
+        var walker = new ErrorReachabilityWalker(compilation)
+        {
+            MappedTypes = mappedTypes,
+            ForeignAssemblyFilter = includeAssemblies,
+        };
         var types = CollectPublicTypes(compilation);
         var found = new ConcurrentBag<(string Id, SortedSet<string> Codes)>();
 

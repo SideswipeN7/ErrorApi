@@ -11,6 +11,14 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
 
+  <!-- ErrorApi's MSBuild-level configuration, surfaced to the generator as build_property.* analyzer
+       options. Consumers of the NuGet packages get the same wiring from the props shipped inside
+       ErrorApi.AspNetCore; this repo declares it here because samples use project references. -->
+  <ItemGroup>
+    <CompilerVisibleProperty Include="ErrorApiExportReachability" />
+    <CompilerVisibleProperty Include="ErrorApiIncludeAssemblies" />
+  </ItemGroup>
+
   <PropertyGroup Label="Package metadata">
     <Authors>ErrorApi contributors</Authors>
     <Product>ErrorApi</Product>

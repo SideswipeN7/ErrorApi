@@ -170,6 +170,55 @@ public sealed class CrossAssemblyTests
     }
 
     [Fact]
+    public void The_consumer_names_the_layers_it_reads_from()
+    {
+        // The layered shape: Domain knows nothing about the API; the API decides which referenced
+        // assemblies it trusts the contract to come from, in its own project file.
+        var library = GeneratorHarness.CompileToReference("MyProject.Domain", ApplicationLibrary);
+
+        const string api = """
+            using System;
+            using ErrorApi;
+            using App;
+            using Microsoft.AspNetCore.Builder;
+            using Microsoft.AspNetCore.Http;
+            using Microsoft.AspNetCore.Routing;
+
+            public static class Endpoints
+            {
+                public static void Map(IEndpointRouteBuilder app) =>
+                    app.MapGet("/orders/{id:guid}", (Guid id, IOrderService s) => s.GetById(id).ToHttpResult());
+            }
+            """;
+
+        // Included — by prefix wildcard, the way a layered solution would write it.
+        var included = GeneratorHarness.Run(
+            [library],
+            new Dictionary<string, string> { ["build_property.ErrorApiIncludeAssemblies"] = "MyProject.*" },
+            api);
+        Assert.Contains("\"Orders.NotFound\"", included.Source("ErrorApi.Metadata.g.cs"), StringComparison.Ordinal);
+
+        // Excluded — the same reference, but the filter names a different world: the exports are not
+        // read and the endpoint honestly documents nothing from that assembly.
+        var excluded = GeneratorHarness.Run(
+            [library],
+            new Dictionary<string, string> { ["build_property.ErrorApiIncludeAssemblies"] = "SomeoneElse.*" },
+            api);
+        Assert.DoesNotContain("\"Orders.NotFound\"", excluded.Source("ErrorApi.Metadata.g.cs"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_library_opts_out_of_exporting_in_its_own_project_file()
+    {
+        var output = GeneratorHarness.Run(
+            [],
+            new Dictionary<string, string> { ["build_property.ErrorApiExportReachability"] = "false" },
+            ApplicationLibrary);
+
+        Assert.DoesNotContain("ReachabilityExport", output.Source("ErrorApi.Metadata.g.cs"), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_dispatch_whose_handler_lives_in_another_assembly_is_resolved_through_the_export()
     {
         var library = GeneratorHarness.CompileToReference("App.Library", ApplicationLibrary);

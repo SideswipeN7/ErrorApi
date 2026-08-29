@@ -38,9 +38,14 @@ internal static class EndpointScanner
         AnalyzerConfigOptionsProvider configuration,
         IReadOnlyDictionary<string, string> mappedTypes,
         List<DiagnosticInfo> diagnostics,
+        IReadOnlyList<string>? includeAssemblies = null,
         System.Threading.CancellationToken cancellationToken = default)
     {
-        var walker = new ErrorReachabilityWalker(compilation) { MappedTypes = mappedTypes };
+        var walker = new ErrorReachabilityWalker(compilation)
+        {
+            MappedTypes = mappedTypes,
+            ForeignAssemblyFilter = includeAssemblies,
+        };
         var models = new Dictionary<(string Method, string Route, string? Group), EndpointModel>();
 
         // Binding an endpoint statement — the Map* overload resolution plus the handler body — is where

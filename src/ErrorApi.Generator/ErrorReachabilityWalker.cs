@@ -56,6 +56,11 @@ internal sealed class ErrorReachabilityWalker
 
         foreach (var assembly in _compilation.SourceModule.ReferencedAssemblySymbols)
         {
+            if (!IncludesAssembly(assembly))
+            {
+                continue;
+            }
+
             foreach (var attribute in assembly.GetAttributes())
             {
                 if (attribute.AttributeClass is not { Name: "ReachabilityExportAttribute", ContainingNamespace: { Name: "ErrorApi" } ns }
@@ -128,7 +133,7 @@ internal sealed class ErrorReachabilityWalker
 
         foreach (var assembly in _compilation.SourceModule.ReferencedAssemblySymbols)
         {
-            if (!ReferencesErrorApi(assembly))
+            if (!ReferencesErrorApi(assembly) || !IncludesAssembly(assembly))
             {
                 continue;
             }
@@ -182,6 +187,38 @@ internal sealed class ErrorReachabilityWalker
     /// </summary>
     public IReadOnlyDictionary<string, string> MappedTypes { get; set; } =
         new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Which referenced assemblies the walk may read exports and catalogs from — exact names, or a
+    /// trailing-star prefix like <c>MyProject.*</c>. <see langword="null"/> means all of them, which is
+    /// the default; <c>ErrorApiIncludeAssemblies</c> in the consumer's project file narrows it.
+    /// </summary>
+    public IReadOnlyList<string>? ForeignAssemblyFilter { get; set; }
+
+    private bool IncludesAssembly(IAssemblySymbol assembly)
+    {
+        if (ForeignAssemblyFilter is not { Count: > 0 } patterns)
+        {
+            return true;
+        }
+
+        foreach (var pattern in patterns)
+        {
+            if (pattern.Length > 0 && pattern[pattern.Length - 1] == '*')
+            {
+                if (assembly.Name.StartsWith(pattern.Substring(0, pattern.Length - 1), StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            else if (string.Equals(assembly.Name, pattern, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// Every <c>[Error]</c> declaration met while walking, keyed by code. Entries coming from a
