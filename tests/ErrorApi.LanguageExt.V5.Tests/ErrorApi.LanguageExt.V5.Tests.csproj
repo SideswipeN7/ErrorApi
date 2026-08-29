@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>ErrorApi.Generator.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);EAPI002;EAPI006;EAPI007</NoWarn>
+
+    <!-- The language-ext 5.x prerelease under test. Override to track a newer beta:
+         dotnet test tests/ErrorApi.LanguageExt.V5.Tests -p:LanguageExtV5TestVersion=5.0.0-beta-xx -->
+    <LanguageExtV5TestVersion Condition="'$(LanguageExtV5TestVersion)' == ''">5.0.0-beta-77</LanguageExtV5TestVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="LanguageExt.Core" VersionOverride="$(LanguageExtV5TestVersion)" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ErrorApi.TestKit\ErrorApi.TestKit.csproj" />
+    <ProjectReference Include="..\..\src\ErrorApi.LanguageExt.V5\ErrorApi.LanguageExt.V5.csproj" />
+  </ItemGroup>
+
+</Project>

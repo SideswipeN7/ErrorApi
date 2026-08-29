@@ -438,7 +438,7 @@ public ErrorDescriptor? FindErrorForInstance(object? instance) => instance switc
 };
 ```
 
-`AddErrorApi()` publishes the model on `ErrorApiRuntime.Metadata`, which is what lets `result.ToHttpResult()` work as a plain extension method with no service provider in scope. Every adapter also has an overload taking `IErrorApiMetadata` explicitly, which is what the tests use.
+`AddErrorApi()` publishes the model on `ErrorApiRuntime.Metadata`, which is what lets `result.ToHttpResult()` work as a plain extension method with no service provider in scope. Every adapter also has an overload taking `IErrorApiMetadata` explicitly, and tests that stand up hosts one after another can hold the static in a scope: `using (ErrorApiRuntime.Use(metadata)) { … }` restores the previous model on dispose. The model stays one per process — parallel hosts should pass metadata explicitly.
 
 ---
 
@@ -747,9 +747,9 @@ dotnet test tests/ErrorApi.LanguageExt.Tests -p:LanguageExtTestVersion=4.4.0
 
 CI runs that as a matrix. The adapters are verified against ErrorOr 1.10.0 / 2.0.1 / 2.1.1,
 OneOf 3.0.263 / 3.0.271, LanguageExt.Core 4.4.0 / 4.4.9, FluentResults 3.15.0 / 3.16.0,
-Ardalis.Result 9.1.0 / 10.1.0 and CSharpFunctionalExtensions 3.4.3 / 3.7.0. language-ext **v5** has no
-stable release yet (5.0.0 is still in beta); a dedicated `ErrorApi.LanguageExt.V5` package is planned
-the moment it ships, and the v4 package will stay as it is.
+Ardalis.Result 9.1.0 / 10.1.0, CSharpFunctionalExtensions 3.4.3 / 3.7.0 and LanguageExt.Core
+5.0.0-beta-77. language-ext **v5** has no stable release yet, so `ErrorApi.LanguageExt.V5` ships as a
+**prerelease** tracking the beta — it goes stable the moment 5.0.0 does, and the v4 package stays as it is.
 
 Working on this repository with a coding agent? [`AGENTS.md`](AGENTS.md) is the map: invariants, where each concern lives, and the checks that have to pass.
 

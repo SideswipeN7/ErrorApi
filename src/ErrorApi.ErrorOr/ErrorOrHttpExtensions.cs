@@ -154,3 +154,4 @@ public static class ErrorOrHttpExtensions
         _ => StatusCodes.Status500InternalServerError,
     };
 }
+

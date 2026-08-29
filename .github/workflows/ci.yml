@@ -102,6 +102,9 @@ jobs:
           - adapter: CSharpFunctionalExtensions
             property: CfeTestVersion
             version: '3.7.0'
+          - adapter: LanguageExt.V5
+            property: LanguageExtV5TestVersion
+            version: '5.0.0-beta-77'
     name: ${{ matrix.adapter }} ${{ matrix.version }}
     steps:
       - uses: actions/checkout@v4

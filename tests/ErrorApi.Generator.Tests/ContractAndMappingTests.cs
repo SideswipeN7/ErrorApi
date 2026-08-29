@@ -151,3 +151,47 @@ public sealed class CreatedMappingTests
         Assert.Equal("/orders/00000000-0000-0000-0000-000000000000", created.Location);
     }
 }
+
+/// <summary>
+/// <see cref="ErrorApiRuntime.Use"/>: the test-friendly way to hold the ambient model — swap in, get
+/// the previous one back on dispose, even when scopes nest.
+/// </summary>
+public sealed class RuntimeScopeTests
+{
+    [Fact]
+    public void The_previous_model_comes_back_when_the_scope_ends()
+    {
+        var outer = new FakeMetadata();
+        var inner = new FakeMetadata();
+
+        using (ErrorApiRuntime.Use(outer))
+        {
+            Assert.Same(outer, ErrorApiRuntime.Metadata);
+
+            using (ErrorApiRuntime.Use(inner))
+            {
+                Assert.Same(inner, ErrorApiRuntime.Metadata);
+            }
+
+            Assert.Same(outer, ErrorApiRuntime.Metadata);
+        }
+
+        Assert.Null(ErrorApiRuntime.Metadata);
+    }
+
+    [Fact]
+    public void Disposing_twice_does_not_clobber_a_newer_scope()
+    {
+        var first = new FakeMetadata();
+        var second = new FakeMetadata();
+
+        var scope = ErrorApiRuntime.Use(first);
+        scope.Dispose();
+
+        using (ErrorApiRuntime.Use(second))
+        {
+            scope.Dispose();
+            Assert.Same(second, ErrorApiRuntime.Metadata);
+        }
+    }
+}

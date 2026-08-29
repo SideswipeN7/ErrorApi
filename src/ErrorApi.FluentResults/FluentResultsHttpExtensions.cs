@@ -184,3 +184,4 @@ public static class FluentResultsHttpExtensions
         this Task<global::FluentResults.Result<TValue>> result, string routeName, Func<TValue, RouteValueDictionary> routeValues) =>
         (await result.ConfigureAwait(false)).ToCreatedAtRoute(routeName, routeValues);
 }
+

@@ -140,3 +140,4 @@ public sealed class CfeDiscoveryTests
         Assert.Contains("global::Shop.OrderNotFound => _errors[0],", output.Source("ErrorApi.Metadata.g.cs"), StringComparison.Ordinal);
     }
 }
+

@@ -122,3 +122,4 @@ public static class CfeHttpExtensions
     public static async Task<IResult> ToHttpResult(this Task<CfeResult> result) =>
         (await result.ConfigureAwait(false)).ToHttpResult();
 }
+

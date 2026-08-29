@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>ErrorApi.Interop</RootNamespace>
+    <PackageId>ErrorApi.LanguageExt.V5</PackageId>
+    <Description>Maps language-ext v5 Fin results onto Minimal API results and ErrorApi's documented error catalog.</Description>
+    <IsAotCompatible>true</IsAotCompatible>
+
+    <!-- language-ext 5.x has no stable release yet, and NuGet rightly refuses a stable package with a
+         prerelease dependency — so this package is prerelease until 5.0.0 ships, and says so. -->
+    <VersionSuffix>beta.1</VersionSuffix>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- VersionOverride: the central pin holds v4 for ErrorApi.LanguageExt; this package tracks v5. -->
+    <PackageReference Include="LanguageExt.Core" VersionOverride="5.0.0-beta-77" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- PrivateAssets="none" so the source generator still reaches a project that references only this
+         adapter; NuGet's default strips analyzers out of a transitive dependency. -->
+    <ProjectReference Include="..\ErrorApi.AspNetCore\ErrorApi.AspNetCore.csproj" PrivateAssets="none" />
+  </ItemGroup>
+
+</Project>

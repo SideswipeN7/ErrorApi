@@ -42,6 +42,45 @@ public static class ErrorApiRuntime
 
         return new Error(code ?? instance?.GetType().Name ?? "Unknown", fallbackStatus, fallbackTitle);
     }
+
+    /// <summary>
+    /// Swaps the ambient model in and restores the previous one on dispose. This is the test-friendly
+    /// way to use the static: a suite that stands up several hosts one after another wraps each in a
+    /// scope instead of remembering to null the property in a <c>finally</c>.
+    /// </summary>
+    /// <remarks>
+    /// The model is still one per process — a scope does not make parallel hosts safe. Tests that run
+    /// hosts concurrently should pass <see cref="IErrorApiMetadata"/> to the adapter overloads
+    /// explicitly instead.
+    /// </remarks>
+    public static IDisposable Use(IErrorApiMetadata metadata)
+    {
+        if (metadata is null)
+        {
+            throw new ArgumentNullException(nameof(metadata));
+        }
+
+        var scope = new RestoreScope(Metadata);
+        Metadata = metadata;
+        return scope;
+    }
+
+    private sealed class RestoreScope : IDisposable
+    {
+        private readonly IErrorApiMetadata? _previous;
+        private bool _disposed;
+
+        public RestoreScope(IErrorApiMetadata? previous) => _previous = previous;
+
+        public void Dispose()
+        {
+            if (!_disposed)
+            {
+                _disposed = true;
+                Metadata = _previous;
+            }
+        }
+    }
 }
 
 
