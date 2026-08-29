@@ -399,6 +399,19 @@ internal sealed class ErrorReachabilityWalker
                 {
                     walk.Codes.Add(memberCode!);
                 }
+                else if (referenced is IPropertySymbol { GetMethod: { } getter } property)
+                {
+                    // Reading a property runs its getter, and a getter body can raise like any method:
+                    // step into a source one, and read the exported reachability of a foreign one.
+                    if (getter.DeclaringSyntaxReferences.Length > 0)
+                    {
+                        VisitMethod(getter, depth + 1, walk);
+                    }
+                    else if (TryGetForeignReachability(property, out var exported))
+                    {
+                        AddExportedCodes(exported, walk);
+                    }
+                }
             }
         }
     }

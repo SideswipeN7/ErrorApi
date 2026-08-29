@@ -15,3 +15,5 @@ EAPI007 | ErrorApi | Warning  | Endpoint handler could not be resolved
 EAPI008 | ErrorApi | Warning  | Declared error code disagrees with the code in the body
 EAPI009 | ErrorApi | Warning  | The walk stopped at a dispatcher
 EAPI010 | ErrorApi | Warning  | Declared error is not returned by any endpoint
+EAPI011 | ErrorApi | Warning  | Same route mapped more than once without distinct groups
+EAPI012 | ErrorApi | Info     | Reachability export stopped at a dispatcher

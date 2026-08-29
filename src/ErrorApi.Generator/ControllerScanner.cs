@@ -106,7 +106,7 @@ internal static class ControllerScanner
         ErrorReachabilityWalker walker)
     {
         var results = new List<ScannedEndpoint>();
-        var prefixes = RouteTemplates(controller, "RouteAttribute");
+        var prefixes = InheritedRouteTemplates(controller);
         if (prefixes.Count == 0)
         {
             prefixes.Add(null);
@@ -115,12 +115,9 @@ internal static class ControllerScanner
         var controllerName = TrimSuffix(controller.Name, "Controller");
         var typeSuppressed = CatalogParser.SuppressedIds(controller);
 
-        foreach (var action in controller.GetMembers().OfType<IMethodSymbol>())
+        foreach (var action in Actions(controller))
         {
-            if (action.MethodKind != MethodKind.Ordinary
-                || action.IsStatic
-                || action.DeclaredAccessibility != Accessibility.Public
-                || HasMvcAttribute(action, "NonActionAttribute"))
+            if (HasMvcAttribute(action, "NonActionAttribute"))
             {
                 continue;
             }
@@ -191,8 +188,79 @@ internal static class ControllerScanner
         return results;
     }
 
-    /// <summary>All (verb, template) pairs an action declares. One attribute, one route.</summary>
+    /// <summary>
+    /// The controller's candidate actions, including ones inherited from a base controller in this
+    /// compilation — the shared-CRUD-base pattern, where the actions live on <c>ApiControllerBase</c>
+    /// and the derived controller only supplies the route. Derived members shadow base members of the
+    /// same signature, so an override is walked once, through its most-derived body.
+    /// </summary>
+    private static IEnumerable<IMethodSymbol> Actions(INamedTypeSymbol controller)
+    {
+        var seen = new HashSet<string>(System.StringComparer.Ordinal);
+
+        for (var current = controller;
+             current is { SpecialType: SpecialType.None } && !IsFrameworkController(current);
+             current = current.BaseType)
+        {
+            foreach (var action in current.GetMembers().OfType<IMethodSymbol>())
+            {
+                if (action.MethodKind != MethodKind.Ordinary
+                    || action.IsStatic
+                    || action.IsAbstract
+                    || action.DeclaredAccessibility != Accessibility.Public)
+                {
+                    continue;
+                }
+
+                var signature = action.Name + "(" + string.Join(",", action.Parameters.Select(p => p.Type.ToDisplayString())) + ")";
+                if (seen.Add(signature))
+                {
+                    yield return action;
+                }
+            }
+        }
+    }
+
+    private static bool IsFrameworkController(INamedTypeSymbol type) =>
+        type.Name is "ControllerBase" or "Controller" && IsMvcNamespace(type.ContainingNamespace);
+
+    /// <summary>
+    /// The nearest declared <c>[Route]</c> prefixes, walking up the base chain the way MVC's inherited
+    /// attributes do — a route on the shared base applies to every derived controller.
+    /// </summary>
+    private static List<string?> InheritedRouteTemplates(INamedTypeSymbol controller)
+    {
+        for (var current = controller;
+             current is { SpecialType: SpecialType.None } && !IsFrameworkController(current);
+             current = current.BaseType)
+        {
+            var templates = RouteTemplates(current, "RouteAttribute");
+            if (templates.Count > 0)
+            {
+                return templates;
+            }
+        }
+
+        return [];
+    }
+
+    /// <summary>
+    /// All (verb, template) pairs an action declares. One attribute, one route. An override that
+    /// declares none inherits the overridden method's, the way MVC's inherited attributes work.
+    /// </summary>
     private static List<(string Verb, string? Template)> ActionRoutes(IMethodSymbol action)
+    {
+        var routes = DeclaredRoutes(action);
+
+        for (var overridden = action.OverriddenMethod; routes.Count == 0 && overridden is not null; overridden = overridden.OverriddenMethod)
+        {
+            routes = DeclaredRoutes(overridden);
+        }
+
+        return routes;
+    }
+
+    private static List<(string Verb, string? Template)> DeclaredRoutes(IMethodSymbol action)
     {
         var routes = new List<(string, string?)>();
 

@@ -87,6 +87,24 @@ internal static class Diagnostics
         isEnabledByDefault: true,
         description: "Endpoints that return Result<T> normally reach at least one catalog entry; none being found often means the handler was resolved through a boundary the generator cannot follow.");
 
+    public static readonly DiagnosticDescriptor AmbiguousUngroupedRoute = new(
+        id: "EAPI011",
+        title: "Same route mapped more than once without distinct groups",
+        messageFormat: "'{0} {1}' is mapped more than once and the mappings carry no distinct API description groups, so their error contracts merge into one; if these are API versions, tell them apart with WithGroupName(...) or [ApiExplorerSettings(GroupName = ...)]",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "Two versions of the same route documented as one contract is the silent failure mode of API versioning: each version's document lists the union of both. The generator reads groups from literal WithGroupName calls and ApiExplorerSettings attributes, and recognises common Asp.Versioning literals; anything else needs an explicit group.");
+
+    public static readonly DiagnosticDescriptor ExportStoppedAtDispatch = new(
+        id: "EAPI012",
+        title: "Reachability export stopped at a dispatcher",
+        messageFormat: "The reachability export for '{0}' stopped at '{1}', whose implementation is outside this compilation; failures raised behind it are not exported, and consumers of this assembly will not see them",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Info,
+        isEnabledByDefault: true,
+        description: "A library baking its reachability walks its own source; a dispatch it cannot see past leaves the export incomplete, which reads as complete on the consumer's side. Declare the missing failures with [ProducesError] on the member or on the message type, or keep the handler in this compilation.");
+
     public static readonly DiagnosticDescriptor UnresolvedHandler = new(
         id: "EAPI007",
         title: "Endpoint handler could not be resolved",

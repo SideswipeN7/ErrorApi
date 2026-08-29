@@ -45,13 +45,15 @@ public sealed class FakeMetadata : IErrorApiMetadata
     /// <inheritdoc />
     public bool TryGetEndpointErrors(string httpMethod, string routePattern, string? group, out IReadOnlyList<ErrorDescriptor> errors)
     {
-        // The same resolution the generated model applies: exact group, then the ungrouped entry, and a
-        // null group also matches a route that lives in exactly one group.
+        // The same resolution the generated model applies: exact group (matched through
+        // EndpointGroup.Normalize, like the generated switch), then the ungrouped entry, and a null
+        // group also matches a route that lives in exactly one group.
         var candidates = Endpoints
             .Where(e => e.HttpMethod == httpMethod && e.RoutePattern == routePattern)
             .ToList();
 
-        var match = candidates.FirstOrDefault(e => e.Group == group)
+        var normalized = EndpointGroup.Normalize(group);
+        var match = (normalized is null ? null : candidates.FirstOrDefault(e => EndpointGroup.Normalize(e.Group) == normalized))
             ?? candidates.FirstOrDefault(e => e.Group is null)
             ?? (group is null && candidates.Count == 1 ? candidates[0] : null);
 

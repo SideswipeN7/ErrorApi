@@ -74,10 +74,10 @@ public sealed class EndpointGroupTests
             metadata,
             StringComparison.Ordinal);
 
-        // …and the resolver switches on the group.
-        Assert.Contains("switch (group)", metadata, StringComparison.Ordinal);
-        Assert.Contains("case \"v1\":", metadata, StringComparison.Ordinal);
-        Assert.Contains("case \"v2\":", metadata, StringComparison.Ordinal);
+        // …and the resolver switches on the normalized group, so runtime "v1" and "1.0" both match.
+        Assert.Contains("switch (global::ErrorApi.EndpointGroup.Normalize(group))", metadata, StringComparison.Ordinal);
+        Assert.Contains("case \"1\":", metadata, StringComparison.Ordinal);
+        Assert.Contains("case \"2\":", metadata, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -137,6 +137,119 @@ public sealed class EndpointGroupTests
             "new global::ErrorApi.EndpointErrors(\"GET\", \"/api/orders/{id}\", new global::ErrorApi.ErrorDescriptor[] { _errors[1] }, \"admin\")",
             metadata,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Asp_Versioning_literals_are_recognised_as_groups()
+    {
+        // Stand-ins with Asp.Versioning's shapes: the scanner recognises the calls by name and reads
+        // the literals, so the package itself is not needed to test the recognition.
+        const string source = """
+            using System;
+            using ErrorApi;
+            using Microsoft.AspNetCore.Builder;
+            using Microsoft.AspNetCore.Http;
+            using Microsoft.AspNetCore.Routing;
+
+            namespace Shop;
+
+            public sealed class ApiVersion
+            {
+                public ApiVersion(int major) { }
+                public ApiVersion(int major, int minor) { }
+            }
+
+            public static class VersioningStubs
+            {
+                public static RouteHandlerBuilder MapToApiVersion(this RouteHandlerBuilder builder, int version) => builder;
+                public static RouteGroupBuilder HasApiVersion(this RouteGroupBuilder builder, ApiVersion version) => builder;
+            }
+
+            public static class Endpoints
+            {
+                public static void Map(IEndpointRouteBuilder app)
+                {
+                    app.MapGet("/orders/{id:guid}", (Guid id, IOrdersV1 s) => s.Get(id).ToHttpResult())
+                        .MapToApiVersion(1);
+
+                    app.MapGet("/orders/{id:guid}", (Guid id, IOrdersV2 s) => s.Get(id).ToHttpResult())
+                        .MapToApiVersion(2);
+
+                    var reporting = app.MapGroup("/reports").HasApiVersion(new ApiVersion(1, 1));
+                    reporting.MapGet("/", (IOrdersV1 s) => s.Get(Guid.Empty).ToHttpResult());
+                }
+            }
+            """;
+
+        var output = GeneratorHarness.RunAndCompile(Domain, source);
+        var metadata = output.Source("ErrorApi.Metadata.g.cs");
+
+        // No EAPI011: the versions tell the two mappings apart.
+        Assert.Empty(output.GeneratorDiagnostics);
+
+        Assert.Contains(
+            "new global::ErrorApi.EndpointErrors(\"GET\", \"/orders/{id}\", new global::ErrorApi.ErrorDescriptor[] { _errors[1] }, \"v1\")",
+            metadata,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "new global::ErrorApi.EndpointErrors(\"GET\", \"/orders/{id}\", new global::ErrorApi.ErrorDescriptor[] { _errors[0] }, \"v2\")",
+            metadata,
+            StringComparison.Ordinal);
+
+        // The group-builder version applies to the endpoints mapped on it.
+        Assert.Contains("\"/reports\", new global::ErrorApi.ErrorDescriptor[] { _errors[1] }, \"v1.1\")", metadata, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_same_route_mapped_twice_without_groups_is_reported()
+    {
+        const string source = """
+            using System;
+            using ErrorApi;
+            using Microsoft.AspNetCore.Builder;
+            using Microsoft.AspNetCore.Http;
+            using Microsoft.AspNetCore.Routing;
+
+            namespace Shop;
+
+            public static class Endpoints
+            {
+                public static void Map(IEndpointRouteBuilder app)
+                {
+                    app.MapGet("/orders/{id:guid}", (Guid id, IOrdersV1 s) => s.Get(id).ToHttpResult());
+                    app.MapGet("/orders/{id:guid}", (Guid id, IOrdersV2 s) => s.Get(id).ToHttpResult());
+                }
+            }
+            """;
+
+        var output = GeneratorHarness.RunAndCompile(Domain, source);
+
+        // The contracts merged into one entry — and EAPI011 says so, because if these are two API
+        // versions, each version's document now lists the union.
+        Assert.Single(output.GeneratorDiagnostics, d => d.Id == "EAPI011");
+        Assert.Contains(
+            "new global::ErrorApi.EndpointErrors(\"GET\", \"/orders/{id}\", new global::ErrorApi.ErrorDescriptor[] { _errors[0], _errors[1] })",
+            output.Source("ErrorApi.Metadata.g.cs"),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_group_normalizer_twins_agree()
+    {
+        // The generated switch labels are normalized at emit time; the incoming group is normalized at
+        // runtime. Same inputs, same answers — or a version's document loses its contracts.
+        foreach (var group in new[] { null, "", "  ", "v1", "V1", "1.0", "v1.0", "1", "v1.1", "2.10", "admin", "Admin", "v9beta", ".0" })
+        {
+            Assert.Equal(EndpointGroup.Normalize(group), Generator.Helpers.GroupNormalizer.Normalize(group));
+        }
+
+        // And the rules themselves: one version, many spellings.
+        Assert.Equal("1", EndpointGroup.Normalize("v1"));
+        Assert.Equal("1", EndpointGroup.Normalize("1.0"));
+        Assert.Equal("1", EndpointGroup.Normalize("V1.0"));
+        Assert.Equal("1.1", EndpointGroup.Normalize("v1.1"));
+        Assert.Equal("admin", EndpointGroup.Normalize("Admin"));
+        Assert.Null(EndpointGroup.Normalize("  "));
     }
 
     [Fact]
@@ -213,7 +326,8 @@ public sealed class EndpointGroupTests
                 .Where(e => e.HttpMethod == httpMethod && e.RoutePattern == routePattern)
                 .ToList();
 
-            var match = candidates.FirstOrDefault(e => e.Group == group)
+            var normalized = EndpointGroup.Normalize(group);
+            var match = (normalized is null ? null : candidates.FirstOrDefault(e => EndpointGroup.Normalize(e.Group) == normalized))
                 ?? candidates.FirstOrDefault(e => e.Group is null)
                 ?? (group is null && candidates.Count == 1 ? candidates[0] : null);
 

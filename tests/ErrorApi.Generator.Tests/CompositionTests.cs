@@ -77,6 +77,25 @@ public sealed class CompositionTests
     }
 
     [Fact]
+    public void The_first_registration_wins_in_DI_and_on_the_static_alike()
+    {
+        var services = new ServiceCollection();
+        var first = new FakeMetadata();
+        var second = new FakeMetadata();
+
+        using (ErrorApiRuntime.Use(first))
+        {
+            ErrorApiRegistration.Register(services, first);
+            ErrorApiRegistration.Register(services, second);
+
+            // Two modules each calling AddErrorApi(): whichever ran first is the model — through DI
+            // and through the ambient static the adapters read. They must never disagree.
+            Assert.Same(first, services.BuildServiceProvider().GetRequiredService<IErrorApiMetadata>());
+            Assert.Same(first, ErrorApiRuntime.Metadata);
+        }
+    }
+
+    [Fact]
     public void Every_assembly_gets_a_public_model_accessor_under_its_own_name()
     {
         const string source = """

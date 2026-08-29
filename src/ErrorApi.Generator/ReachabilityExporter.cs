@@ -9,32 +9,45 @@ namespace ErrorApi.Generator;
 
 /// <summary>
 /// Walks a library's own public surface and records which catalog codes each member can reach, so a
-/// consuming compilation can continue the walk across the assembly boundary. Two kinds of entry come
-/// out: a method's reachability (for direct calls into the library) and a message type's reachability
-/// (for dispatches whose handler lives here). Both are emitted as
+/// consuming compilation can continue the walk across the assembly boundary. Three kinds of entry come
+/// out: a method's reachability (for direct calls into the library), a property's (reading it runs the
+/// getter), and a message type's (for dispatches whose handler lives here). All are emitted as
 /// <c>[assembly: ReachabilityExport]</c> and read back by <see cref="ErrorReachabilityWalker"/>.
 /// </summary>
 internal static class ReachabilityExporter
 {
     public static List<ReachabilityExport> Compute(
+        ErrorReachabilityWalker walker,
         Compilation compilation,
-        IReadOnlyDictionary<string, string> mappedTypes,
-        IReadOnlyList<string>? includeAssemblies,
+        List<DiagnosticInfo> diagnostics,
         System.Threading.CancellationToken cancellationToken)
     {
-        // The filter applies here too, so a library's transitive reads honour its own project file.
-        var walker = new ErrorReachabilityWalker(compilation)
-        {
-            MappedTypes = mappedTypes,
-            ForeignAssemblyFilter = includeAssemblies,
-        };
         var types = CollectPublicTypes(compilation);
         var found = new ConcurrentBag<(string Id, SortedSet<string> Codes)>();
+        var stopped = new ConcurrentBag<(ISymbol Member, string Dispatch)>();
 
         System.Threading.Tasks.Parallel.ForEach(
             types,
             new System.Threading.Tasks.ParallelOptions { CancellationToken = cancellationToken },
-            type => ExportType(type, walker, found));
+            type => ExportType(type, walker, found, stopped));
+
+        // A dispatch the walk could not see past leaves this export incomplete — the same problem
+        // EAPI009 reports for an endpoint, one boundary earlier. Deterministic order for the build log.
+        foreach (var (member, dispatch) in stopped
+                     .OrderBy(s => s.Member.ToDisplayString(), System.StringComparer.Ordinal)
+                     .ThenBy(s => s.Dispatch, System.StringComparer.Ordinal))
+        {
+            if (CatalogParser.SuppressedIds(member).Contains(Diagnostics.ExportStoppedAtDispatch.Id))
+            {
+                continue;
+            }
+
+            diagnostics.Add(DiagnosticInfo.Create(
+                Diagnostics.ExportStoppedAtDispatch,
+                member.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax(cancellationToken),
+                member.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat),
+                dispatch));
+        }
 
         // Union per member id, deterministically ordered — the same source must always bake the same bytes.
         var merged = new SortedDictionary<string, SortedSet<string>>(System.StringComparer.Ordinal);
@@ -56,29 +69,56 @@ internal static class ReachabilityExporter
     }
 
     private static void ExportType(
-        INamedTypeSymbol type, ErrorReachabilityWalker walker, ConcurrentBag<(string, SortedSet<string>)> found)
+        INamedTypeSymbol type,
+        ErrorReachabilityWalker walker,
+        ConcurrentBag<(string, SortedSet<string>)> found,
+        ConcurrentBag<(ISymbol, string)> stopped)
     {
         SortedSet<string>? typeCodes = null;
 
-        foreach (var method in type.GetMembers().OfType<IMethodSymbol>())
+        foreach (var member in type.GetMembers())
         {
-            if (method.MethodKind != MethodKind.Ordinary || method.DeclaredAccessibility != Accessibility.Public)
+            IMethodSymbol? entry = null;
+            string? id = null;
+
+            if (member is IMethodSymbol { MethodKind: MethodKind.Ordinary, DeclaredAccessibility: Accessibility.Public } method)
+            {
+                entry = method;
+                id = method.GetDocumentationCommentId();
+            }
+            else if (member is IPropertySymbol
+                     {
+                         DeclaredAccessibility: Accessibility.Public,
+                         GetMethod: { DeclaredAccessibility: Accessibility.Public } getter,
+                     } property)
+            {
+                entry = getter;
+                id = property.GetDocumentationCommentId();
+            }
+
+            if (entry is null)
             {
                 continue;
             }
 
-            var codes = walker.CollectFromMethod(method).Codes;
-            if (codes.Count == 0)
+            var walk = walker.CollectFromMethod(entry);
+
+            foreach (var dispatch in walk.UnresolvedDispatches)
+            {
+                stopped.Add((member, dispatch));
+            }
+
+            if (walk.Codes.Count == 0)
             {
                 continue;
             }
 
-            if (method.GetDocumentationCommentId() is { } methodId)
+            if (id is not null)
             {
-                found.Add((methodId, codes));
+                found.Add((id, walk.Codes));
             }
 
-            (typeCodes ??= new SortedSet<string>(System.StringComparer.Ordinal)).UnionWith(codes);
+            (typeCodes ??= new SortedSet<string>(System.StringComparer.Ordinal)).UnionWith(walk.Codes);
         }
 
         if (typeCodes is null || type.TypeKind is not (TypeKind.Class or TypeKind.Struct))
@@ -88,6 +128,8 @@ internal static class ReachabilityExporter
 
         // The handler shapes, exported under the *message* so a consumer's dispatch can find them:
         // a generic interface constructed with the message, or the *Handler/*Consumer convention.
+        // Like the walker's dispatch bridge, this deliberately over-matches: any generic interface of
+        // the application's world counts, because a validator's failures reach the endpoint too.
         foreach (var message in MessagesHandledBy(type))
         {
             if (message.GetDocumentationCommentId() is { } messageId)

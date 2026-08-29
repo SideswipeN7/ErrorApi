@@ -79,8 +79,15 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
             .GroupBy(e => e.ErrorTypeDisplay!, System.StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.First().Code, System.StringComparer.Ordinal);
 
-        var includeAssemblies = IncludeAssemblies(configuration);
-        var scan = EndpointScanner.Scan(compilation, mapCalls, configuration, mappedTypes, diagnostics, includeAssemblies, cancellationToken);
+        // One walker serves the endpoint scan and the reachability export alike, so its caches — source
+        // types, semantic models, handler and implementation lookups — are built once per build.
+        var walker = new ErrorReachabilityWalker(compilation)
+        {
+            MappedTypes = mappedTypes,
+            ForeignAssemblyFilter = IncludeAssemblies(configuration),
+        };
+
+        var scan = EndpointScanner.Scan(compilation, mapCalls, configuration, walker, diagnostics, cancellationToken);
         var errors = MergeErrors(entries, scan.DiscoveredErrors);
         ReportUnknownCodes(scan.Endpoints, errors, diagnostics);
         ReportUnreachableErrors(entries, scan.Endpoints, diagnostics);
@@ -88,7 +95,7 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
         // A compilation with no endpoints is a library: its walk starts at its own public surface, and
         // the result is baked in for the compilation that has the endpoints to read back.
         var reachability = ExportsReachability(configuration, compilation, hasEndpoints: scan.Endpoints.Count > 0)
-            ? ReachabilityExporter.Compute(compilation, mappedTypes, includeAssemblies, cancellationToken)
+            ? ReachabilityExporter.Compute(walker, compilation, diagnostics, cancellationToken)
             : new List<ReachabilityExport>();
 
         return new GenerationModel(

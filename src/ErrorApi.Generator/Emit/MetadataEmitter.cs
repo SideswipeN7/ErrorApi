@@ -316,9 +316,10 @@ internal static class MetadataEmitter
     }
 
     /// <summary>
-    /// Writes one verb's resolution. The rules mirror the documented contract: the exact group first,
-    /// then the ungrouped entry, and a null group also matches a route that lives in exactly one group —
-    /// so a purely cosmetic <c>WithGroupName</c> never hides an endpoint's errors.
+    /// Writes one verb's resolution. The rules mirror the documented contract: the exact group first —
+    /// matched through <c>EndpointGroup.Normalize</c>, so <c>"v1"</c> and Asp.Versioning's <c>"1.0"</c>
+    /// are the same group — then the ungrouped entry, and a null group also matches a route that lives
+    /// in exactly one group, so a purely cosmetic <c>WithGroupName</c> never hides an endpoint's errors.
     /// </summary>
     private static void WriteMethodCase(SourceWriter writer, string label, List<(string? Group, int Ordinal)> entries)
     {
@@ -336,11 +337,16 @@ internal static class MetadataEmitter
         writer.Line(label);
         using (writer.Indented())
         {
-            using (writer.Block("switch (group)"))
+            using (writer.Block("switch (global::ErrorApi.EndpointGroup.Normalize(group))"))
             {
+                var emitted = new HashSet<string>(System.StringComparer.Ordinal);
                 foreach (var (name, ordinal) in grouped)
                 {
-                    writer.Line($"case {SourceWriter.Literal(name)}: errors = _endpoints[{ordinal}].Errors; return true;");
+                    // Two source groups normalizing to one name would be duplicate labels; first wins.
+                    if (GroupNormalizer.Normalize(name) is { } normalized && emitted.Add(normalized))
+                    {
+                        writer.Line($"case {SourceWriter.Literal(normalized)}: errors = _endpoints[{ordinal}].Errors; return true;");
+                    }
                 }
             }
 

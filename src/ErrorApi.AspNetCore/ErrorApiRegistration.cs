@@ -19,7 +19,16 @@ public static class ErrorApiRegistration
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(metadata);
 
-        services.TryAddSingleton(metadata);
+        // First registration wins — everywhere. TryAddSingleton keeps the first model, so the ambient
+        // static must keep it too; letting a second AddErrorApi() overwrite the static would leave DI
+        // and the adapters reading different models in a host with more than one registering module.
+        // Composing models deliberately is what AddErrorApi(x => x.Include(...)) is for.
+        if (services.Any(d => d.ServiceType == typeof(IErrorApiMetadata)))
+        {
+            return services;
+        }
+
+        services.AddSingleton(metadata);
         ErrorApiRuntime.Metadata = metadata;
         services.ConfigureAll<OpenApiOptions>(options => options.AddErrorResponses());
 

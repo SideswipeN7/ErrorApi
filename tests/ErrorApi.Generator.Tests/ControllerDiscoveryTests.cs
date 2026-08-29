@@ -171,6 +171,56 @@ public sealed class ControllerDiscoveryTests
     }
 
     [Fact]
+    public void Actions_inherited_from_a_shared_base_controller_are_scanned()
+    {
+        // The shared-CRUD-base pattern: the actions live on the abstract base, the derived controller
+        // supplies the route. MVC inherits both the actions and a base [Route]; the scanner must too.
+        const string controllers = """
+            using System;
+            using ErrorApi;
+            using Microsoft.AspNetCore.Http;
+            using Microsoft.AspNetCore.Mvc;
+
+            namespace Shop;
+
+            [ApiController]
+            [Route("api/[controller]")]
+            public abstract class ReadControllerBase(IOrderService service) : ControllerBase
+            {
+                [HttpGet("{id:guid}")]
+                public IResult GetById(Guid id) => service.GetById(id).ToHttpResult();
+
+                [HttpGet("ping")]
+                public virtual IResult Ping() => Results.Ok();
+            }
+
+            public sealed class OrdersController(IOrderService service) : ReadControllerBase(service)
+            {
+                // The override shadows the base action: one entry, walked through this body.
+                [HttpGet("ping")]
+                public override IResult Ping() => service.Pay(Guid.Empty).ToHttpResult();
+            }
+            """;
+
+        var output = GeneratorHarness.RunAndCompile(Domain, controllers);
+        var metadata = output.Source("ErrorApi.Metadata.g.cs");
+
+        Assert.Empty(output.GeneratorDiagnostics);
+
+        // The inherited action, under the derived controller's name and the base's route prefix.
+        Assert.Contains(
+            "new global::ErrorApi.EndpointErrors(\"GET\", \"/api/orders/{id}\", new global::ErrorApi.ErrorDescriptor[] { _errors[1] })",
+            metadata,
+            StringComparison.Ordinal);
+
+        // The overridden action resolved through the derived body: Pay reaches both codes.
+        Assert.Contains(
+            "new global::ErrorApi.EndpointErrors(\"GET\", \"/api/orders/ping\", new global::ErrorApi.ErrorDescriptor[] { _errors[0], _errors[1] })",
+            metadata,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_controller_project_counts_as_an_api_for_the_unreachable_rule()
     {
         // Controllers are endpoints, so a catalog entry no action reaches must still fire EAPI010.

@@ -36,16 +36,10 @@ internal static class EndpointScanner
         Compilation compilation,
         IReadOnlyList<InvocationExpressionSyntax> candidates,
         AnalyzerConfigOptionsProvider configuration,
-        IReadOnlyDictionary<string, string> mappedTypes,
+        ErrorReachabilityWalker walker,
         List<DiagnosticInfo> diagnostics,
-        IReadOnlyList<string>? includeAssemblies = null,
         System.Threading.CancellationToken cancellationToken = default)
     {
-        var walker = new ErrorReachabilityWalker(compilation)
-        {
-            MappedTypes = mappedTypes,
-            ForeignAssemblyFilter = includeAssemblies,
-        };
         var models = new Dictionary<(string Method, string Route, string? Group), EndpointModel>();
 
         // Binding an endpoint statement — the Map* overload resolution plus the handler body — is where
@@ -85,8 +79,16 @@ internal static class EndpointScanner
 
             if (models.TryGetValue(key, out var existing))
             {
-                // The same route mapped twice (for example once per feature module): union the contracts.
+                // The same route mapped twice: union the contracts — and if nothing tells the two
+                // mappings apart, say so, because "two versions documented as one" is the silent
+                // failure mode of API versioning.
                 codes.UnionWith(existing.ErrorCodes);
+
+                if (endpoint.Group is null && !item.Suppressed.Contains(Diagnostics.AmbiguousUngroupedRoute.Id))
+                {
+                    diagnostics.Add(DiagnosticInfo.Create(
+                        Diagnostics.AmbiguousUngroupedRoute, endpoint.Location, endpoint.HttpMethod, endpoint.RoutePattern));
+                }
             }
             else if (item.UnresolvedDispatch is not null)
             {
@@ -259,24 +261,61 @@ internal static class EndpointScanner
 
     /// <summary>
     /// Resolves the endpoint's API description group: <c>WithGroupName(...)</c> chained after the
-    /// <c>Map*</c> call wins, then one inherited from the builder chain (a group's, or one on the local
-    /// the builder was assigned to). This is what tells two versions of the same route apart.
+    /// <c>Map*</c> call wins, then <c>MapToApiVersion(...)</c>, then one inherited from the builder
+    /// chain (a group's, or one on the local the builder was assigned to). Asp.Versioning literals —
+    /// <c>HasApiVersion(1)</c>, <c>new ApiVersion(1, 0)</c>, a version set built in a local — count
+    /// too, as the group the default <c>'v'VVV</c> format produces; an endpoint carrying several
+    /// versions stays ungrouped, because it is one handler with one contract in every document.
+    /// This is what tells two versions of the same route apart.
     /// </summary>
-    private static string? ResolveGroup(InvocationExpressionSyntax invocation, SemanticModel model) =>
-        TrailingGroup(invocation, model) ?? ReceiverGroup(GetReceiver(invocation), model, 0);
+    private static string? ResolveGroup(InvocationExpressionSyntax invocation, SemanticModel model)
+    {
+        var versions = new List<string>();
 
-    private static string? TrailingGroup(InvocationExpressionSyntax invocation, SemanticModel model)
+        if (TrailingGroup(invocation, model, versions) is { } trailing)
+        {
+            return trailing;
+        }
+
+        if (ReceiverGroup(GetReceiver(invocation), model, 0, versions) is { } inherited)
+        {
+            return inherited;
+        }
+
+        var distinct = versions.Distinct(System.StringComparer.Ordinal).ToList();
+        return distinct.Count == 1 ? distinct[0] : null;
+    }
+
+    private static string? TrailingGroup(InvocationExpressionSyntax invocation, SemanticModel model, List<string> versions)
     {
         SyntaxNode current = invocation;
 
         while (current.Parent is MemberAccessExpressionSyntax { Parent: InvocationExpressionSyntax outer } member
                && member.Expression == current)
         {
-            if (member.Name.Identifier.ValueText == "WithGroupName"
-                && outer.ArgumentList.Arguments.Count > 0
-                && model.GetConstantValue(outer.ArgumentList.Arguments[0].Expression).Value is string name)
+            var name = member.Name.Identifier.ValueText;
+            var arguments = outer.ArgumentList.Arguments;
+
+            if (name == "WithGroupName"
+                && arguments.Count > 0
+                && model.GetConstantValue(arguments[0].Expression).Value is string group)
             {
-                return name;
+                return group;
+            }
+
+            if (name == "MapToApiVersion" && arguments.Count > 0 && VersionGroup(arguments[0].Expression, model) is { } pinned)
+            {
+                // The endpoint says which single version of its set it belongs to — that is its group.
+                return pinned;
+            }
+
+            if (name == "HasApiVersion" && arguments.Count > 0 && VersionGroup(arguments[0].Expression, model) is { } version)
+            {
+                versions.Add(version);
+            }
+            else if (name == "WithApiVersionSet" && arguments.Count > 0)
+            {
+                _ = ReceiverGroup(arguments[0].Expression, model, 0, versions);
             }
 
             current = outer;
@@ -286,7 +325,7 @@ internal static class EndpointScanner
     }
 
     /// <summary>The receiver-chain twin of <see cref="ResolvePrefix"/>: nearest declaration wins.</summary>
-    private static string? ReceiverGroup(ExpressionSyntax? receiver, SemanticModel model, int depth)
+    private static string? ReceiverGroup(ExpressionSyntax? receiver, SemanticModel model, int depth, List<string> versions)
     {
         if (receiver is null || depth > MaxPrefixDepth)
         {
@@ -297,18 +336,35 @@ internal static class EndpointScanner
         {
             case InvocationExpressionSyntax invocation:
             {
-                if (invocation.Expression is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "WithGroupName" }
-                    && invocation.ArgumentList.Arguments.Count > 0
-                    && model.GetConstantValue(invocation.ArgumentList.Arguments[0].Expression).Value is string name)
+                if (invocation.Expression is MemberAccessExpressionSyntax member)
                 {
-                    return name;
+                    var name = member.Name.Identifier.ValueText;
+                    var arguments = invocation.ArgumentList.Arguments;
+
+                    if (name == "WithGroupName"
+                        && arguments.Count > 0
+                        && model.GetConstantValue(arguments[0].Expression).Value is string group)
+                    {
+                        return group;
+                    }
+
+                    if (name is "HasApiVersion" or "MapToApiVersion"
+                        && arguments.Count > 0
+                        && VersionGroup(arguments[0].Expression, model) is { } version)
+                    {
+                        versions.Add(version);
+                    }
+                    else if (name == "WithApiVersionSet" && arguments.Count > 0)
+                    {
+                        _ = ReceiverGroup(arguments[0].Expression, model, depth + 1, versions);
+                    }
                 }
 
-                return ReceiverGroup(GetReceiver(invocation), model, depth + 1);
+                return ReceiverGroup(GetReceiver(invocation), model, depth + 1, versions);
             }
 
             case ParenthesizedExpressionSyntax parenthesized:
-                return ReceiverGroup(parenthesized.Expression, model, depth + 1);
+                return ReceiverGroup(parenthesized.Expression, model, depth + 1, versions);
 
             case IdentifierNameSyntax or MemberAccessExpressionSyntax:
             {
@@ -340,7 +396,7 @@ internal static class EndpointScanner
 
                     if (declaringModel is not null)
                     {
-                        return ReceiverGroup(initializer, declaringModel, depth + 1);
+                        return ReceiverGroup(initializer, declaringModel, depth + 1, versions);
                     }
                 }
 
@@ -350,6 +406,51 @@ internal static class EndpointScanner
             default:
                 return null;
         }
+    }
+
+    /// <summary>
+    /// The group name an Asp.Versioning literal produces under the conventional <c>'v'VVV</c> format:
+    /// <c>1</c>, <c>1.0</c> and <c>new ApiVersion(1)</c> are all <c>v1</c>; <c>new ApiVersion(1, 1)</c>
+    /// is <c>v1.1</c>. The runtime may format the group differently (the default is plain <c>1.0</c>),
+    /// which is why the generated lookup matches groups through <c>EndpointGroup.Normalize</c>.
+    /// </summary>
+    private static string? VersionGroup(ExpressionSyntax expression, SemanticModel model)
+    {
+        var constant = model.GetConstantValue(expression);
+        if (constant.HasValue)
+        {
+            return constant.Value switch
+            {
+                int major => "v" + major.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                double value => "v" + value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture),
+                _ => null,
+            };
+        }
+
+        if (expression is BaseObjectCreationExpressionSyntax creation
+            && model.GetTypeInfo(creation).Type is { Name: "ApiVersion" }
+            && creation.ArgumentList is { Arguments.Count: > 0 } list)
+        {
+            var first = model.GetConstantValue(list.Arguments[0].Expression).Value;
+            if (first is double majorMinor)
+            {
+                return "v" + majorMinor.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
+            }
+
+            if (first is int major)
+            {
+                var minor = list.Arguments.Count > 1
+                    ? model.GetConstantValue(list.Arguments[1].Expression).Value as int?
+                    : null;
+
+                return minor is null or 0
+                    ? "v" + major.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    : "v" + major.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + "." + minor.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

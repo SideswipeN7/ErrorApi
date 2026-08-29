@@ -219,6 +219,107 @@ public sealed class CrossAssemblyTests
     }
 
     [Fact]
+    public void A_property_getter_exports_and_resolves_like_a_method()
+    {
+        const string library = """
+            using System;
+            using ErrorApi;
+
+            namespace App;
+
+            [ErrorCatalog("Cfg")]
+            public static partial class CfgErrors
+            {
+                [Error(503)] public static partial Error Missing { get; }
+            }
+
+            public sealed class Settings
+            {
+                public Result<string> ConnectionString
+                {
+                    get
+                    {
+                        if (Environment.GetEnvironmentVariable("CS") is { } value)
+                        {
+                            return value;
+                        }
+
+                        return CfgErrors.Missing;
+                    }
+                }
+            }
+            """;
+
+        // Reading a property runs its getter — the declaring side bakes what the getter can reach,
+        // keyed by the property…
+        Assert.Contains(
+            "[assembly: global::ErrorApi.ReachabilityExport(\"P:App.Settings.ConnectionString\", \"Cfg.Missing\")]",
+            GeneratorHarness.RunAndCompile(library).Source("ErrorApi.Metadata.g.cs"),
+            StringComparison.Ordinal);
+
+        // …and a consumer reading it crosses the boundary through the export.
+        var reference = GeneratorHarness.CompileToReference("App.Library", library);
+
+        const string api = """
+            using ErrorApi;
+            using App;
+            using Microsoft.AspNetCore.Builder;
+            using Microsoft.AspNetCore.Http;
+            using Microsoft.AspNetCore.Routing;
+
+            public static class Endpoints
+            {
+                public static void Map(IEndpointRouteBuilder app) =>
+                    app.MapGet("/config", (Settings s) => s.ConnectionString.ToHttpResult());
+            }
+            """;
+
+        var output = GeneratorHarness.Run([reference], api);
+
+        Assert.Empty(output.GeneratorDiagnostics);
+        Assert.Contains("\"Cfg.Missing\"", output.Source("ErrorApi.Metadata.g.cs"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_export_stopped_at_a_dispatcher_is_reported()
+    {
+        // The library-side twin of EAPI009: a public member dispatches to a handler that lives in
+        // neither this compilation nor any export, so what it bakes is incomplete — and silent
+        // incompleteness on the consumer's side is exactly what the diagnostic exists to prevent.
+        const string library = """
+            using System;
+            using System.Threading.Tasks;
+            using ErrorApi;
+
+            namespace App;
+
+            [ErrorCatalog("Orders")]
+            public static partial class OrderErrors
+            {
+                [Error(404)] public static partial Error NotFound { get; }
+            }
+
+            public interface IRequest<TResponse>;
+
+            public interface ISender { Task<TResponse> Send<TResponse>(IRequest<TResponse> request); }
+
+            public sealed record ArchiveOrder(Guid Id) : IRequest<Result>;
+
+            public sealed class OrderFacade(ISender sender)
+            {
+                public Result Touch(Guid id) => id == Guid.Empty ? OrderErrors.NotFound : Result.Success();
+
+                public Task<Result> Archive(Guid id) => sender.Send(new ArchiveOrder(id));
+            }
+            """;
+
+        var output = GeneratorHarness.Run(library);
+
+        var reported = Assert.Single(output.GeneratorDiagnostics, d => d.Id == "EAPI012");
+        Assert.Contains("Archive", reported.GetMessage(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_dispatch_whose_handler_lives_in_another_assembly_is_resolved_through_the_export()
     {
         var library = GeneratorHarness.CompileToReference("App.Library", ApplicationLibrary);
@@ -246,3 +347,4 @@ public sealed class CrossAssemblyTests
         Assert.Contains("\"Orders.AlreadyPaid\"", output.Source("ErrorApi.Metadata.g.cs"), StringComparison.Ordinal);
     }
 }
+
