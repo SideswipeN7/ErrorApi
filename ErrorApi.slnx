@@ -23,6 +23,7 @@
     <Project Path="tests/ErrorApi.ArdalisResult.Tests/ErrorApi.ArdalisResult.Tests.csproj" />
     <Project Path="tests/ErrorApi.CSharpFunctionalExtensions.Tests/ErrorApi.CSharpFunctionalExtensions.Tests.csproj" />
     <Project Path="tests/ErrorApi.LanguageExt.V5.Tests/ErrorApi.LanguageExt.V5.Tests.csproj" />
+    <Project Path="tests/ErrorApi.Integration.Tests/ErrorApi.Integration.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Sample.Api/Sample.Api.csproj" />

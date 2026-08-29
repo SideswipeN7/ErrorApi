@@ -41,6 +41,9 @@ app.UseSwaggerUI(options =>
 
 app.Run();
 
+/// <summary>The entry point, visible to WebApplicationFactory-based integration tests.</summary>
+public partial class Program;
+
 /// <summary>Serialization contract, so the sample stays native-AOT clean.</summary>
 [JsonSerializable(typeof(Order))]
 [JsonSerializable(typeof(Order[]))]

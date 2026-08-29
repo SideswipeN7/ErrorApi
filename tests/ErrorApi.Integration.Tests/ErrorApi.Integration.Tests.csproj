@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>ErrorApi.Integration.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Three samples, three Program classes in the global namespace: the aliases keep them apart. -->
+    <ProjectReference Include="..\..\samples\Sample.Api\Sample.Api.csproj" Aliases="BasicApi" />
+    <ProjectReference Include="..\..\samples\Sample.Controllers.Api\Sample.Controllers.Api.csproj" Aliases="ControllersApi" />
+    <ProjectReference Include="..\..\samples\Sample.Toolbox.Api\Sample.Toolbox.Api.csproj" Aliases="ToolboxApi" />
+  </ItemGroup>
+
+</Project>

@@ -22,3 +22,6 @@ app.MapScalarApiReference("/scalar", options => options.WithTitle("Controllers s
 app.MapControllers();
 
 app.Run();
+
+/// <summary>The entry point, visible to WebApplicationFactory-based integration tests.</summary>
+public partial class Program;

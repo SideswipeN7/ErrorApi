@@ -76,6 +76,9 @@ app.MapGet("/gateway/ping", [ProducesError(typeof(TimeoutException))] () =>
 
 app.Run();
 
+/// <summary>The entry point, visible to WebApplicationFactory-based integration tests.</summary>
+public partial class Program;
+
 namespace Sample.Toolbox.Api
 {
     /// <summary>Body of <c>POST /customers</c>.</summary>
