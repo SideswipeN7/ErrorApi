@@ -69,8 +69,10 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # BenchmarkDotNet writes its artifacts relative to the working directory, not the project.
       - name: Run benchmarks
-        run: dotnet run -c Release --project benchmarks/ErrorApi.Benchmarks
+        working-directory: benchmarks/ErrorApi.Benchmarks
+        run: dotnet run -c Release
 
       - uses: actions/upload-artifact@v4
         with:
