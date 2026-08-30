@@ -6,3 +6,6 @@ obj/
 artifacts/
 *.received.txt
 !docs/images/*.png
+
+# BenchmarkDotNet output
+BenchmarkDotNet.Artifacts/
