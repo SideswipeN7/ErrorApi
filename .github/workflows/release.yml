@@ -4,7 +4,9 @@ name: release
 # users with write access — outsiders can read this file but never run it. One run does the whole
 # release: full build + tests as the gate, then tag, GitHub release and nuget.org push.
 #
-# Requires the NUGET_API_KEY repository secret (Settings → Secrets and variables → Actions).
+# Publishing uses nuget.org Trusted Publishing (OIDC): the NuGet/login step exchanges this workflow's
+# identity for a short-lived API key, so no NUGET_API_KEY secret exists. The trust policy lives on
+# nuget.org (profile → Trusted Publishing: SideswipeN7/ErrorApi, workflow release.yml).
 on:
   workflow_dispatch:
     inputs:
@@ -19,6 +21,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write # OIDC token for nuget.org Trusted Publishing
 
 concurrency:
   group: release
@@ -74,11 +77,18 @@ jobs:
           name: packages-${{ inputs.version }}
           path: artifacts/*.nupkg
 
+      - name: Log in to nuget.org (Trusted Publishing)
+        if: ${{ !inputs.dry_run }}
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: FiloMortis
+
       - name: Push to nuget.org
         if: ${{ !inputs.dry_run }}
         run: >
           dotnet nuget push "artifacts/*.nupkg"
-          --api-key "${{ secrets.NUGET_API_KEY }}"
+          --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}"
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate
 
