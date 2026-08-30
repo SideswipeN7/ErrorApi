@@ -4,15 +4,16 @@
 #
 #   pwsh .github/enable-branch-protection.ps1
 #
-# enforce_admins stays false on purpose: the owner keeps a direct-push escape hatch, and a solo
-# maintainer with zero required approvals can still merge their own PRs. Flip it to true when a second
-# maintainer exists.
+# enforce_admins stays false on purpose: the owner keeps a direct-push escape hatch. One approving
+# review is required, so any PR not authored by the owner (agents, outside contributors) needs the
+# owner's approval before merge; the owner's own PRs can still be merged via the admin bypass. Flip
+# enforce_admins to true when a second maintainer exists.
 
 $protection = @'
 {
   "required_status_checks": { "strict": false, "contexts": ["build"] },
   "enforce_admins": false,
-  "required_pull_request_reviews": { "required_approving_review_count": 0 },
+  "required_pull_request_reviews": { "required_approving_review_count": 1 },
   "restrictions": null,
   "allow_force_pushes": false,
   "allow_deletions": false,
