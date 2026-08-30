@@ -55,3 +55,6 @@ orders.MapPost("/{id:guid}/pay", (Guid id, decimal amount, IOrderService service
     .WithSummary("Pays an order in full");
 
 app.Run();
+
+/// <summary>The entry point, visible to WebApplicationFactory-based integration tests.</summary>
+public partial class Program;

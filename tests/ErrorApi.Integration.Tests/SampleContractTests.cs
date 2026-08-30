@@ -5,6 +5,7 @@ extern alias ToolboxApi;
 using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace ErrorApi.Integration.Tests;
@@ -37,6 +38,7 @@ public sealed class BasicSampleTests(WebApplicationFactory<BasicApi::Program> fa
     [Fact]
     public async Task A_live_failure_answers_problem_json_carrying_the_code()
     {
+        using var ambient = ErrorApiRuntime.Use(factory.Services.GetRequiredService<IErrorApiMetadata>());
         using var client = factory.CreateClient();
         using var response = await client.GetAsync($"/orders/{Guid.NewGuid()}");
 
@@ -81,6 +83,7 @@ public sealed class ControllersSampleTests(WebApplicationFactory<ControllersApi:
     [Fact]
     public async Task A_live_action_failure_answers_problem_json()
     {
+        using var ambient = ErrorApiRuntime.Use(factory.Services.GetRequiredService<IErrorApiMetadata>());
         using var client = factory.CreateClient();
         using var response = await client.GetAsync($"/orders/{Guid.NewGuid()}");
 
@@ -119,6 +122,7 @@ public sealed class ToolboxSampleTests(WebApplicationFactory<ToolboxApi::Program
     [Fact]
     public async Task A_failure_whose_type_lives_in_the_library_resolves_through_the_composed_model()
     {
+        using var ambient = ErrorApiRuntime.Use(factory.Services.GetRequiredService<IErrorApiMetadata>());
         using var client = factory.CreateClient();
         using var response = await client.GetAsync($"/customers/{Guid.NewGuid()}");
 

@@ -91,3 +91,96 @@ public sealed class DocumentShapingTests
         Assert.Contains("Orders.NotFound", contract, StringComparison.Ordinal);
     }
 }
+
+/// <summary>
+/// <c>AddErrorApiResults()</c>: a handler returns <c>Result</c>/<c>Result&lt;T&gt;</c> directly and
+/// the endpoint filter maps it exactly as <c>ToHttpResult()</c> would. The mapping core is pinned
+/// here; the live behaviour rides in the integration suite through the Mediator sample.
+/// </summary>
+public sealed class ResultFilterTests
+{
+    [Fact]
+    public void A_valued_success_maps_to_200_with_the_value()
+    {
+        var mapped = Assert.IsAssignableFrom<Microsoft.AspNetCore.Http.IResult>(
+            ErrorApi.AspNetCore.ErrorApiResultFilter.Map(Result<int>.Success(7)));
+
+        Assert.Equal(200, ((Microsoft.AspNetCore.Http.IStatusCodeHttpResult)mapped).StatusCode);
+        Assert.Equal(7, ((Microsoft.AspNetCore.Http.IValueHttpResult)mapped).Value);
+    }
+
+    [Fact]
+    public void A_valueless_success_maps_to_204()
+    {
+        var mapped = ErrorApi.AspNetCore.ErrorApiResultFilter.Map(Result.Success());
+
+        Assert.IsType<Microsoft.AspNetCore.Http.HttpResults.NoContent>(mapped);
+    }
+
+    [Fact]
+    public void A_failure_maps_to_the_problem_shape_with_the_code()
+    {
+        var mapped = ErrorApi.AspNetCore.ErrorApiResultFilter.Map(
+            Result<int>.Failure(new Error("Orders.NotFound", 404, "Order not found")));
+
+        var problem = Assert.IsType<Microsoft.AspNetCore.Http.HttpResults.ProblemHttpResult>(mapped);
+        Assert.Equal(404, problem.StatusCode);
+        Assert.Equal("Orders.NotFound", Assert.Contains(ResultHttpExtensions.CodeExtensionName, problem.ProblemDetails.Extensions));
+    }
+
+    [Fact]
+    public void Anything_that_is_not_a_result_passes_through_untouched()
+    {
+        var value = new object();
+
+        Assert.Same(value, ErrorApi.AspNetCore.ErrorApiResultFilter.Map(value));
+        Assert.Null(ErrorApi.AspNetCore.ErrorApiResultFilter.Map(null));
+    }
+}
+
+/// <summary>
+/// <c>AddErrorApi(x =&gt; x.AddExceptionHandler(...))</c>: the lambda form of
+/// <c>AddErrorApiExceptionHandler()</c>, so one call configures everything — still explicit,
+/// never a side effect.
+/// </summary>
+[Collection("ambient-metadata")]
+public sealed class ExceptionHandlerOptionTests
+{
+    [Fact]
+    public void The_option_registers_the_handler_and_applies_the_tuning()
+    {
+        var services = new ServiceCollection();
+
+        using (ErrorApiRuntime.Use(new FakeMetadata()))
+        {
+            ErrorApiRegistration.Register(
+                services,
+                new FakeMetadata(),
+                x => x.AddExceptionHandler(o => o.UseExceptionMessageAsDetail = true));
+        }
+
+        var provider = services.BuildServiceProvider();
+
+        Assert.Contains(
+            provider.GetServices<Microsoft.AspNetCore.Diagnostics.IExceptionHandler>(),
+            handler => handler is ErrorApiExceptionHandler);
+        Assert.True(provider
+            .GetRequiredService<Microsoft.Extensions.Options.IOptions<ErrorApiExceptionOptions>>()
+            .Value.UseExceptionMessageAsDetail);
+    }
+
+    [Fact]
+    public void Without_the_option_no_handler_is_registered()
+    {
+        var services = new ServiceCollection();
+
+        using (ErrorApiRuntime.Use(new FakeMetadata()))
+        {
+            ErrorApiRegistration.Register(services, new FakeMetadata(), x => { });
+        }
+
+        Assert.DoesNotContain(
+            services.BuildServiceProvider().GetServices<Microsoft.AspNetCore.Diagnostics.IExceptionHandler>(),
+            handler => handler is ErrorApiExceptionHandler);
+    }
+}

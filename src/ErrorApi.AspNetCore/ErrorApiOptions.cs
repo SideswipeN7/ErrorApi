@@ -15,6 +15,25 @@ public sealed class ErrorApiOptions
 
     internal bool DescriptionsEnabled { get; private set; } = true;
 
+    internal bool ExceptionHandlerEnabled { get; private set; }
+
+    internal Action<ErrorApiExceptionOptions>? ExceptionHandlerConfigure { get; private set; }
+
+    /// <summary>
+    /// Registers the ErrorApi exception handler as part of this call — the lambda-form of
+    /// <c>AddErrorApiExceptionHandler()</c>, so one <c>AddErrorApi(x =&gt; ...)</c> line configures
+    /// everything. Explicit on purpose: taking over exception handling is opt-in, never a side effect.
+    /// The pipeline half is still yours: call <c>app.UseExceptionHandler();</c> (with
+    /// <c>AddProblemDetails()</c> registered) for the handler to run.
+    /// </summary>
+    /// <param name="configure">Optional tuning of <see cref="ErrorApiExceptionOptions"/>.</param>
+    public ErrorApiOptions AddExceptionHandler(Action<ErrorApiExceptionOptions>? configure = null)
+    {
+        ExceptionHandlerEnabled = true;
+        ExceptionHandlerConfigure = configure;
+        return this;
+    }
+
     internal Func<ErrorDescriptor, bool>? Visibility { get; private set; }
 
     /// <summary>

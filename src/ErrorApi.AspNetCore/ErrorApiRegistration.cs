@@ -48,6 +48,11 @@ public static class ErrorApiRegistration
         var options = new ErrorApiOptions();
         configure(options);
 
+        if (options.ExceptionHandlerEnabled)
+        {
+            services.AddErrorApiExceptionHandler(options.ExceptionHandlerConfigure);
+        }
+
         var model = metadata;
         if (options.Included.Count > 0)
         {

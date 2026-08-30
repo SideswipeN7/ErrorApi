@@ -146,6 +146,22 @@ app.MapGet("/orders/{id:guid}", Results<Ok<Order>, ProblemHttpResult> (Guid id, 
 
 The failure arm is always `ProblemHttpResult`, which carries no static status — that is exactly the hole the generated per-endpoint contract fills, so the error half of the document is identical in both styles.
 
+**Or skip the mapping call entirely.** C# forbids user-defined conversions to an interface, so a
+result can never implicitly become an `IResult` — but an endpoint filter gets the same ergonomics:
+
+```csharp
+var orders = app.MapGroup("/orders").AddErrorApiResults();
+
+orders.MapGet("/{id:guid}", async (Guid id, ISender sender) =>
+    await sender.Send(new GetOrder(id)));       // Result<Order>, returned as-is
+```
+
+`AddErrorApiResults()` maps a returned `Result`/`Result<T>` exactly as `ToHttpResult()` would
+(success → 200/204, failure → the problem shape with the code) and rewrites the endpoint's 200
+metadata so the document describes `T`, never the wrapper. The success value serializes from its
+runtime type, which is the one part of ErrorApi native AOT cannot see through — under trimming or
+AOT, prefer the explicit mapping calls.
+
 **Old-fashioned controllers work too.** An attribute-routed action is a handler like any other: the
 generator finds the class by its `ControllerBase` ancestry (or `[ApiController]`), reads the route from
 the attributes — `[controller]`/`[action]` tokens, constraints, rooted templates and all — and walks
@@ -720,6 +736,11 @@ because they are the contract. The filters hide whole entries from the documente
 catalog listing and the TS contract. Both are **documentation decisions only**: a hidden code still
 resolves at runtime and endpoints answer exactly as before, so flipping them per environment can never
 change behaviour. Several filters compose; an entry must pass all of them.
+
+`x.AddExceptionHandler(...)` is the lambda form of `AddErrorApiExceptionHandler()`, so one
+`AddErrorApi(x => ...)` call configures everything — still explicit, never a side effect. The
+pipeline half stays yours: `app.UseExceptionHandler();` (with `AddProblemDetails()` registered) is
+what makes the handler run.
 
 A referenced assembly that does **not** run the generator has nothing to export, and stays a boundary —
 `EAPI009` names it, `[ProducesError]` covers it. The library side has the same guard one boundary

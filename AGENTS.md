@@ -18,7 +18,7 @@ that introduces reflection on the request path, is going the wrong way.
 
 ```bash
 dotnet build ErrorApi.slnx                       # must be warning-free
-dotnet test ErrorApi.slnx                        # 259 tests across nine suites
+dotnet test ErrorApi.slnx                        # 277 tests across nine suites
 dotnet run -c Release --project benchmarks/ErrorApi.Benchmarks   # request-path cost, in-process (SAC-safe)
 dotnet test ErrorApi.slnx --collect:"XPlat Code Coverage"        # per-suite cobertura XML (coverlet)
 ERRORAPI_ACCEPT_SNAPSHOTS=1 dotnet test ErrorApi.slnx   # re-approve snapshots, then read the diff
@@ -41,7 +41,7 @@ over it during a normal build; an IL2026/IL3050 warning there is a real regressi
 | `tests/ErrorApi.TestKit` | `net10.0` | the generator harness, the snapshot assertion, `FakeMetadata` |
 | `tests/ErrorApi.Generator.Tests` | `net10.0` | core snapshot and behaviour tests; references no result library |
 | `tests/ErrorApi.{ErrorOr,OneOf,LanguageExt,LanguageExt.V5,FluentResults,ArdalisResult,CSharpFunctionalExtensions}.Tests` | `net10.0` | one suite per adapter, version overridable |
-| `tests/ErrorApi.Integration.Tests` | `net10.0` | three samples under `WebApplicationFactory` (aliased `ProjectReference`s): live OpenAPI, live problem responses, the served TS contract |
+| `tests/ErrorApi.Integration.Tests` | `net10.0` | twelve samples under `WebApplicationFactory` (aliased `ProjectReference`s; Wolverine excluded — startup codegen too heavy for a gate): live OpenAPI, live problem responses, the served TS contract. Runs serially, and every live-problem assertion scopes `ErrorApiRuntime.Use(factory model)` — many hosts share one process, and the ambient static is one per process |
 | `benchmarks/ErrorApi.Benchmarks` | `net10.0` | BenchmarkDotNet over the request path: generated lookups, base mapping, every adapter, vs raw `TypedResults`. In-process toolchain on purpose — the default per-benchmark executables trip Smart App Control. Results table lives in README "Performance"; re-run and refresh it after touching the mapping path |
 | `samples/Sample.Api` | `net10.0` | the reference end-to-end proof, and the only one with `PublishAot` |
 | `samples/Sample.{ErrorOr,OneOf,LanguageExt,Exceptions,Mediator,FluentResults,Wolverine,Controllers}.Api` | `net10.0` | the same API per style |

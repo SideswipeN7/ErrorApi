@@ -15,10 +15,21 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Three samples, three Program classes in the global namespace: the aliases keep them apart. -->
+    <!-- One Program class per sample, all in the global namespace: the aliases keep them apart.
+         Every sample boots here except Wolverine, whose runtime codegen makes the host too slow and
+         environment-dependent for a per-commit gate. -->
     <ProjectReference Include="..\..\samples\Sample.Api\Sample.Api.csproj" Aliases="BasicApi" />
     <ProjectReference Include="..\..\samples\Sample.Controllers.Api\Sample.Controllers.Api.csproj" Aliases="ControllersApi" />
     <ProjectReference Include="..\..\samples\Sample.Toolbox.Api\Sample.Toolbox.Api.csproj" Aliases="ToolboxApi" />
+    <ProjectReference Include="..\..\samples\Sample.ErrorOr.Api\Sample.ErrorOr.Api.csproj" Aliases="ErrorOrApi" />
+    <ProjectReference Include="..\..\samples\Sample.OneOf.Api\Sample.OneOf.Api.csproj" Aliases="OneOfApi" />
+    <ProjectReference Include="..\..\samples\Sample.LanguageExt.Api\Sample.LanguageExt.Api.csproj" Aliases="LanguageExtApi" />
+    <ProjectReference Include="..\..\samples\Sample.Exceptions.Api\Sample.Exceptions.Api.csproj" Aliases="ExceptionsApi" />
+    <ProjectReference Include="..\..\samples\Sample.FluentResults.Api\Sample.FluentResults.Api.csproj" Aliases="FluentResultsApi" />
+    <ProjectReference Include="..\..\samples\Sample.Ardalis.Api\Sample.Ardalis.Api.csproj" Aliases="ArdalisApi" />
+    <ProjectReference Include="..\..\samples\Sample.Cfe.Api\Sample.Cfe.Api.csproj" Aliases="CfeApi" />
+    <ProjectReference Include="..\..\samples\Sample.Mediator.Api\Sample.Mediator.Api.csproj" Aliases="MediatorApi" />
+    <ProjectReference Include="..\..\samples\Sample.Mediator.Validation.Api\Sample.Mediator.Validation.Api.csproj" Aliases="ValidationApi" />
   </ItemGroup>
 
 </Project>

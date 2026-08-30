@@ -2,8 +2,28 @@ using System;
 
 namespace ErrorApi;
 
+/// <summary>
+/// The runtime shape <see cref="Result"/> and <see cref="Result{T}"/> share, so a hosting-layer
+/// component — the endpoint filter behind <c>AddErrorApiResults()</c> — can map a boxed result
+/// without knowing <c>T</c>. Not intended for application code; call the typed members instead.
+/// </summary>
+public interface IErrorApiResult
+{
+    /// <summary><see langword="true"/> when the operation succeeded.</summary>
+    bool IsSuccess { get; }
+
+    /// <summary>The failure, or <see cref="ErrorApi.Error.None"/> when successful.</summary>
+    Error Error { get; }
+
+    /// <summary><see langword="true"/> when a successful result carries a value.</summary>
+    bool HasValue { get; }
+
+    /// <summary>The boxed success value, or <see langword="null"/>.</summary>
+    object? ValueOrNull { get; }
+}
+
 /// <summary>An operation that either succeeded or failed with a single <see cref="ErrorApi.Error"/>.</summary>
-public readonly struct Result
+public readonly struct Result : IErrorApiResult
 {
     private Result(bool isSuccess, Error error)
     {
@@ -30,12 +50,16 @@ public readonly struct Result
     public TOut Match<TOut>(Func<TOut> onSuccess, Func<Error, TOut> onFailure) =>
         IsSuccess ? onSuccess() : onFailure(Error);
 
+    bool IErrorApiResult.HasValue => false;
+
+    object? IErrorApiResult.ValueOrNull => null;
+
     public static implicit operator Result(Error error) => Failure(error);
 }
 
 /// <summary>An operation that either produced a <typeparamref name="T"/> or failed with a single <see cref="ErrorApi.Error"/>.</summary>
 /// <typeparam name="T">The success value type.</typeparam>
-public readonly struct Result<T>
+public readonly struct Result<T> : IErrorApiResult
 {
     private readonly T _value;
 
@@ -81,6 +105,10 @@ public readonly struct Result<T>
 
     /// <summary>Drops the success value, keeping only success/failure.</summary>
     public Result WithoutValue() => IsSuccess ? Result.Success() : Result.Failure(Error);
+
+    bool IErrorApiResult.HasValue => IsSuccess;
+
+    object? IErrorApiResult.ValueOrNull => IsSuccess ? _value : null;
 
     public static implicit operator Result<T>(T value) => Success(value);
 

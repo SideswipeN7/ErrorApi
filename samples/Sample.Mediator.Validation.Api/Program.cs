@@ -64,3 +64,6 @@ app.Run();
 
 /// <summary>Body of <c>POST /orders/{id}/cancel</c>.</summary>
 public sealed record CancelOrderBody(string Reason);
+
+/// <summary>The entry point, visible to WebApplicationFactory-based integration tests.</summary>
+public partial class Program;

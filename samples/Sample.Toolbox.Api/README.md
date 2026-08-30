@@ -37,7 +37,7 @@ public static partial class FlagErrors
    consumer names the layers it trusts the contract to come from.
 3. `AddErrorApi(x => x.Include(...))` — so a failure whose **type** is declared in the library resolves
    by instance in this process.
-4. `AddErrorApiExceptionHandler()` + `UseExceptionHandler()` for the thrown 504.
+4. `x.AddExceptionHandler()` inside the `AddErrorApi` lambda + `app.UseExceptionHandler()` for the thrown 504.
 5. Endpoints; `app.MapOpenApi(); app.MapErrorContract();`
 
 ## What Swagger shows
