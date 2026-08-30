@@ -67,21 +67,29 @@ jobs:
   benchmarks:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tfm: ['net8.0', 'net9.0', 'net10.0']
+    name: benchmarks ${{ matrix.tfm }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
 
       # BenchmarkDotNet writes its artifacts relative to the working directory, not the project.
       - name: Run benchmarks
         working-directory: benchmarks/ErrorApi.Benchmarks
-        run: dotnet run -c Release
+        run: dotnet run -c Release -f ${{ matrix.tfm }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: benchmark-results-${{ github.sha }}
+          name: benchmark-results-${{ matrix.tfm }}-${{ github.sha }}
           path: benchmarks/ErrorApi.Benchmarks/BenchmarkDotNet.Artifacts/results/*
           if-no-files-found: error
 
