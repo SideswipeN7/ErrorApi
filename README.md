@@ -278,10 +278,49 @@ public static class OrderErrors
 }
 ```
 
-A symbol from a referenced assembly has no body to read, so rule 2 cannot be re-applied by a consumer —
-which is why the generator bakes every body-inferred resolution into the declaring assembly as
-`[assembly: CatalogExport(...)]` and reads it back through the reference. The declaring assembly's
-resolution is authoritative everywhere; nothing drifts, and nothing needs to be spelled twice.
+**The status doesn't have to be typed either.** A bare `[Error]` resolves its status in this order —
+the most specific declaration always wins:
+
+1. `[ErrorStatusCode(400)]` on the member — beats everything, including an explicit `[Error(404)]`;
+2. the `[Error(404)]` argument itself;
+3. the catalog's default: `[ErrorCatalog("Order.Validation", 422)]` gives every entry inside a status,
+   so a catalog of same-status failures reads as one line per entry;
+4. for an annotated **type**, an integer literal in its base constructor call — the shape of a library
+   that already carries the status.
+
+Rule 4 is what makes onboarding an existing result library nearly free. A language-ext catalog is
+already written; `[Error]` just points at it:
+
+```csharp
+[ErrorCatalog("Orders")]
+public static class OrderErrors
+{
+    [Error]   // -> "Orders.NotFound", 404, title "Order not found" — all read from the line below
+    public sealed record NotFound(Guid Id) : Expected("Order not found", 404);
+}
+```
+
+And the fast-catalog shape for a validation family:
+
+```csharp
+[ErrorCatalog("Order.Validation", 422)]
+public static partial class ValidationErrors
+{
+    [Error] public static partial Error InvalidOrder { get; }                     // Order.Validation.InvalidOrder, 422
+    [Error, ErrorStatusCode(400)] public static partial Error MalformedId { get; }
+    [Error, ErrorDescription("The total must be positive.")] public static partial Error InvalidTotal { get; }
+}
+```
+
+`[ErrorDescription]` is the documentation prose as its own attribute, so an entry that inherits
+everything else still carries one line of docs; it overrides `[Error(Description = ...)]` the same way
+`[ErrorStatusCode]` overrides the status.
+
+A symbol from a referenced assembly has no body to read, so rule 2 for codes — and rule 4 for statuses —
+cannot be re-applied by a consumer. The generator therefore bakes every source-inferred resolution into
+the declaring assembly as `[assembly: CatalogExport(...)]` (code alone, or code + status + title) and
+reads it back through the reference. The declaring assembly's resolution is authoritative everywhere;
+nothing drifts, and nothing needs to be spelled twice.
 
 ---
 
@@ -367,13 +406,18 @@ a contract, because a message is not one.
 
 ### `ErrorApi.LanguageExt`
 
-language-ext errors carry a numeric code and a message, neither of which says anything about HTTP. Annotating your own `Expected` subclasses supplies the missing half.
+Your `Expected` subclasses already carry a message and a status, so a bare `[Error]` is the whole
+onboarding — the status and title are read from the base constructor call, the wire code from the name:
 
 ```csharp
-[ErrorApi.Error("Orders.NotFound", 404, Title = "Order not found")]
-public sealed record OrderNotFound(Guid Id) : Expected("Order not found", 404);
+[ErrorCatalog("Orders")]
+public static class OrderErrors
+{
+    [Error]   // -> "Orders.NotFound", 404, "Order not found" — nothing written twice
+    public sealed record NotFound(Guid Id) : Expected("Order not found", 404);
+}
 
-public Fin<Order> GetById(Guid id) => new OrderNotFound(id);
+public Fin<Order> GetById(Guid id) => new OrderErrors.NotFound(id);
 
 orders.MapGet("/{id:guid}", (Guid id, IOrderService s) => s.GetById(id).ToHttpResult());
 ```

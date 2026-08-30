@@ -30,26 +30,27 @@ public sealed record CreateOrderRequest(string Customer, decimal Total);
 /// language-ext.
 /// </summary>
 /// <remarks>
-/// The numeric code language-ext carries is not a wire contract, so <c>[Error]</c> supplies the code a
-/// client switches on and the status the document promises. Nesting the cases inside a catalog type
-/// keeps their names short while <c>[ErrorCatalog]</c> gives them dotted codes: <c>Orders.NotFound</c>.
+/// Each <c>Expected</c> already carries the message and the status, so a bare <c>[Error]</c> is all it
+/// takes: the status and title are read from the base constructor call, the wire code from the name
+/// under the catalog's prefix — <c>Orders.NotFound</c>. <c>[ErrorDescription]</c> adds documentation
+/// prose where it earns its line; nothing is written twice.
 /// </remarks>
 [ErrorCatalog("Orders")]
 public static class OrderErrors
 {
-    [Error(404, Description = "No order exists for the supplied identifier.")]
+    [Error, ErrorDescription("No order exists for the supplied identifier.")]
     public sealed record NotFound(Guid Id) : Expected("Order not found", 404);
 
-    [Error(409, Description = "The order reached a terminal state before this request arrived.")]
+    [Error, ErrorDescription("The order reached a terminal state before this request arrived.")]
     public sealed record AlreadyPaid(Guid Id) : Expected("Order was already paid", 409);
 
     // The positional parameter is not called Expected on purpose: it would shadow the base type, and
     // the project namespace already shadows LanguageExt, so the qualified name would not save it.
-    [Error(422)]
+    [Error]
     public sealed record AmountMismatch(decimal ExpectedTotal, decimal Actual)
         : Expected("Amount does not match the order total", 422);
 
-    [Error(400)]
+    [Error]
     public sealed record InvalidCustomer() : Expected("Customer must not be empty", 400);
 }
 

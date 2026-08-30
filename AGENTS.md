@@ -18,7 +18,7 @@ that introduces reflection on the request path, is going the wrong way.
 
 ```bash
 dotnet build ErrorApi.slnx                       # must be warning-free
-dotnet test ErrorApi.slnx                        # 234 tests across nine suites
+dotnet test ErrorApi.slnx                        # 239 tests across nine suites
 dotnet run -c Release --project benchmarks/ErrorApi.Benchmarks   # request-path cost, in-process (SAC-safe)
 ERRORAPI_ACCEPT_SNAPSHOTS=1 dotnet test ErrorApi.slnx   # re-approve snapshots, then read the diff
 dotnet run --project samples/Sample.Api          # /swagger, /scalar, /openapi/v1.json, /openapi/errors.ts
@@ -64,9 +64,15 @@ The generator does **not** reference `ErrorApi.Abstractions`. It matches attribu
      **A member is only held to the generated rules if it is marked `partial`.**
    The wire code and the title may be inferred — see `Helpers/NameInference`. The priority is
    explicit argument, then a `code:` literal in the member's body, then the name plus the
-   `[ErrorCatalog]` prefix. `ErrorReachabilityWalker` resolves codes through the same helper, because
-   the walk has to agree with the catalog it is walking towards; a change to one order without the
-   other silently empties endpoint contracts.
+   `[ErrorCatalog]` prefix. The **status** resolves as: `[ErrorStatusCode]` (beats everything), the
+   `[Error(status)]` argument, the catalog default (`[ErrorCatalog(prefix, status)]`), then — for an
+   annotated type — an int literal in the base constructor call (`: Expected("msg", 404)`), which is
+   what makes a bare `[Error]` enough on a library type that already carries the data.
+   `[ErrorDescription]` overrides `Description=` the same way. Source-inferred statuses are baked as
+   the 4-arg `CatalogExport(id, code, status, title)` and read back by consumers.
+   `ErrorReachabilityWalker.TryBuildDescriptor` resolves codes AND statuses through the same helpers,
+   because the walk has to agree with the catalog it is walking towards; a change to one order without
+   the other silently empties endpoint contracts.
 2. **`EndpointScanner`** resolves each `Map*` call site: route template (including `MapGroup` prefixes
    followed back through locals), HTTP method, handler expression, and the API description group —
    `WithGroupName` literals, and Asp.Versioning literals (`HasApiVersion`/`MapToApiVersion`/

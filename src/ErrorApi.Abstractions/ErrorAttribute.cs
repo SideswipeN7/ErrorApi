@@ -46,6 +46,18 @@ namespace ErrorApi;
 public sealed class ErrorAttribute : Attribute
 {
     /// <summary>
+    /// Declares an entry with everything inferred. The wire code comes from the body or the name as
+    /// usual; the status comes from the containing catalog's default
+    /// (<c>[ErrorCatalog("Order.Validation", 422)]</c>) or, for an annotated type, from an integer
+    /// literal in its base constructor call — the shape of a library that already carries the status,
+    /// like language-ext's <c>Expected("Order not found", 404)</c>. When neither exists, the
+    /// declaration is invalid and says so.
+    /// </summary>
+    public ErrorAttribute()
+    {
+    }
+
+    /// <summary>
     /// Declares an entry whose wire code is inferred. The generator takes the code from a <c>code:</c>
     /// argument in the member's own body when it finds one, and otherwise from the declaration's name
     /// prefixed by the catalog it belongs to.
@@ -115,6 +127,22 @@ public sealed class ErrorCatalogAttribute : Attribute
     /// <param name="prefix">The prefix inferred codes are built from, without a trailing separator.</param>
     public ErrorCatalogAttribute(string prefix) => Prefix = prefix;
 
+    /// <summary>
+    /// A catalog with a default status: every <c>[Error]</c> entry inside that names no status of its
+    /// own takes this one, so a catalog of same-status failures reads as one line per entry.
+    /// <c>[ErrorStatusCode]</c> or an explicit <c>[Error(400)]</c> on the member overrides it.
+    /// </summary>
+    /// <param name="prefix">The prefix inferred codes are built from, without a trailing separator.</param>
+    /// <param name="defaultStatusCode">The status entries inherit when they declare none.</param>
+    public ErrorCatalogAttribute(string prefix, int defaultStatusCode)
+    {
+        Prefix = prefix;
+        DefaultStatusCode = defaultStatusCode;
+    }
+
     /// <summary>The prefix inferred codes are built from.</summary>
     public string Prefix { get; }
+
+    /// <summary>The status entries inherit when they declare none, or 0 when the catalog sets none.</summary>
+    public int DefaultStatusCode { get; }
 }

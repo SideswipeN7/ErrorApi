@@ -36,11 +36,16 @@ internal static class MetadataEmitter
         var writer = new SourceWriter();
         GeneratedFileHeader.Write(writer);
 
-        // Body-inferred codes cannot be re-derived from metadata by a consuming compilation, so the
-        // resolution is baked into the assembly and read back through the reference.
+        // What was resolved from source cannot be re-derived from metadata by a consuming compilation —
+        // a body-inferred code, a base-constructor-inferred status — so the resolution is baked into
+        // the assembly and read back through the reference.
         foreach (var entry in errorTypes.Where(e => e.ExportId is not null).OrderBy(e => e.Code, System.StringComparer.Ordinal))
         {
-            writer.Line($"[assembly: global::ErrorApi.CatalogExport({SourceWriter.Literal(entry.ExportId)}, {SourceWriter.Literal(entry.Code)})]");
+            var full = entry.ExportsStatus
+                ? $", {entry.StatusCode}, {SourceWriter.Literal(entry.Title)}"
+                : string.Empty;
+
+            writer.Line($"[assembly: global::ErrorApi.CatalogExport({SourceWriter.Literal(entry.ExportId)}, {SourceWriter.Literal(entry.Code)}{full})]");
         }
 
         // A library's walk starts at its own public surface; what each member can reach is baked in so

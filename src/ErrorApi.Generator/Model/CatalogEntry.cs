@@ -41,7 +41,8 @@ internal sealed record CatalogEntry(
     string? ErrorTypeDisplay,
     LocationInfo? Location,
     string? ExportId = null,
-    EquatableArray<string> Suppressions = default) : System.IEquatable<CatalogEntry>
+    EquatableArray<string> Suppressions = default,
+    bool ExportsStatus = false) : System.IEquatable<CatalogEntry>
 {
     /// <summary>
     /// The fully qualified type this entry was declared on, when <c>[Error]</c> sits on a type that can

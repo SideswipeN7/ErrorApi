@@ -59,13 +59,19 @@ internal static class CatalogParser
 
         var attribute = context.Attributes[0];
 
-        // [Error(404)] leaves the code to be inferred; [Error("Orders.NotFound", 404)] spells it out.
+        // [Error] infers everything; [Error(404)] leaves the code to be inferred;
+        // [Error("Orders.NotFound", 404)] spells both out.
         var arguments = attribute.ConstructorArguments;
         string? declaredCode;
-        int statusCode;
+        int? statusCode;
 
         switch (arguments.Length)
         {
+            case 0:
+                declaredCode = null;
+                statusCode = null;
+                break;
+
             case 1 when arguments[0].Value is int statusOnly:
                 declaredCode = null;
                 statusCode = statusOnly;
@@ -77,12 +83,7 @@ internal static class CatalogParser
                 break;
 
             default:
-                return Invalid(node, display, "the [Error] arguments could not be read as (int statusCode) or (string code, int statusCode)");
-        }
-
-        if (statusCode is < 100 or > 599)
-        {
-            return new ParsedCatalogEntry(null, DiagnosticInfo.Create(Diagnostics.InvalidStatusCode, node, statusCode.ToString(), display));
+                return Invalid(node, display, "the [Error] arguments could not be read as (), (int statusCode) or (string code, int statusCode)");
         }
 
         string? title = null, detail = null, description = null;
@@ -97,23 +98,54 @@ internal static class CatalogParser
             }
         }
 
+        // The most specific declaration wins: [ErrorStatusCode]/[ErrorDescription] on the member beat
+        // the [Error] arguments, which beat the catalog's default, which beats the base constructor.
+        statusCode = NameInference.OverrideStatus(symbol) ?? statusCode ?? NameInference.CatalogDefaultStatus(symbol);
+        description = NameInference.OverrideDescription(symbol) ?? description;
+
+        string? inferredTitle = null;
+        var statusFromSource = false;
+
+        if (statusCode is null && symbol is INamedTypeSymbol)
+        {
+            // The library the type extends may already carry the data — Expected("Order not found", 404).
+            (statusCode, inferredTitle) = NameInference.StatusFromBase(node, context.SemanticModel);
+            statusFromSource = statusCode is not null;
+        }
+
+        if (statusCode is null)
+        {
+            return Invalid(
+                node,
+                display,
+                "the [Error] names no status code, the catalog declares no default ([ErrorCatalog(prefix, statusCode)]), and none could be read from the base constructor");
+        }
+
+        if (statusCode is < 100 or > 599)
+        {
+            return new ParsedCatalogEntry(null, DiagnosticInfo.Create(Diagnostics.InvalidStatusCode, node, statusCode.Value.ToString(), display));
+        }
+
         var isErrorType = symbol is INamedTypeSymbol;
         var bodyCode = NameInference.CodeFromBody(node, context.SemanticModel);
 
         var code = declaredCode ?? bodyCode ?? NameInference.CodeFromName(symbol, isErrorType);
-        title ??= NameInference.Humanize(NameInference.EntryName(symbol));
+        title ??= inferredTitle ?? NameInference.Humanize(NameInference.EntryName(symbol));
 
         // A code written twice is a code that can drift, and the half nobody reads is the documented one.
         DiagnosticInfo? drift = declaredCode is not null && bodyCode is not null && bodyCode != declaredCode
             ? DiagnosticInfo.Create(Diagnostics.CodeDisagreesWithBody, node, declaredCode, bodyCode)
             : null;
 
-        // A body-inferred code cannot be re-derived from metadata, so it is exported for consumers.
-        var exportId = declaredCode is null && bodyCode is not null ? symbol.GetDocumentationCommentId() : null;
+        // What was resolved from source cannot be re-derived from metadata, so it is exported for
+        // consumers: a body-inferred code, and a base-constructor-inferred status.
+        var exportId = (declaredCode is null && bodyCode is not null) || statusFromSource
+            ? symbol.GetDocumentationCommentId()
+            : null;
 
         var parsed = symbol is INamedTypeSymbol type
-            ? ParseErrorType(type, node, code, statusCode, title, detail, description)
-            : ParseMember(symbol, node, display, code, statusCode, title, detail, description, exportId);
+            ? ParseErrorType(type, node, code, statusCode.Value, title, detail, description, exportId, statusFromSource)
+            : ParseMember(symbol, node, display, code, statusCode.Value, title, detail, description, exportId);
 
         var suppressed = SuppressedIds(symbol);
         if (parsed.Entry is { } built && !suppressed.IsEmpty)
@@ -136,7 +168,8 @@ internal static class CatalogParser
     /// language-ext error, a hand-rolled closed hierarchy — becomes a catalog entry this way.
     /// </summary>
     private static ParsedCatalogEntry ParseErrorType(
-        INamedTypeSymbol type, SyntaxNode node, string code, int statusCode, string? title, string? detail, string? description)
+        INamedTypeSymbol type, SyntaxNode node, string code, int statusCode, string? title, string? detail, string? description,
+        string? exportId, bool statusFromSource)
     {
         var display = type.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat);
 
@@ -166,7 +199,9 @@ internal static class CatalogParser
                 Parameters: EquatableArray<ParameterModel>.Empty,
                 DeclaringMember: type.ToDisplayString(FullMemberFormat),
                 ErrorTypeDisplay: type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                Location: LocationInfo.From(node)),
+                Location: LocationInfo.From(node),
+                ExportId: exportId,
+                ExportsStatus: statusFromSource),
             null);
     }
 

@@ -774,12 +774,41 @@ internal sealed class ErrorReachabilityWalker
                 _ => null,
             };
 
+            // The same resolution the catalog parser applies, so the walk and the catalog agree:
+            // [ErrorStatusCode] first, then the [Error] argument, then the catalog's default, then the
+            // base constructor of a source type — or the export its own assembly baked.
+            status = NameInference.OverrideStatus(definition) ?? status ?? NameInference.CatalogDefaultStatus(definition);
+
+            string? inferredTitle = null;
+
+            if (status is null && definition is INamedTypeSymbol)
+            {
+                if (definition.DeclaringSyntaxReferences.Length > 0)
+                {
+                    foreach (var reference in definition.DeclaringSyntaxReferences)
+                    {
+                        var node = reference.GetSyntax();
+                        if (_compilation.ContainsSyntaxTree(node.SyntaxTree))
+                        {
+                            (status, inferredTitle) = NameInference.StatusFromBase(node, GetModel(node.SyntaxTree));
+                            if (status is not null)
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
+                else if (NameInference.ExportedStatus(definition) is { } exported)
+                {
+                    (status, inferredTitle) = (exported.StatusCode, exported.Title);
+                }
+            }
+
             if (status is null)
             {
                 continue;
             }
 
-            // The same resolution the catalog parser applies, so the walk and the catalog agree.
             var value = NameInference.ResolveCode(definition, attribute, _compilation, GetModel);
 
             string? title = null, detail = null, description = null;
@@ -797,9 +826,9 @@ internal sealed class ErrorReachabilityWalker
             descriptor = new DiscoveredError(
                 value,
                 status.Value,
-                title ?? NameInference.Humanize(NameInference.EntryName(definition)),
+                title ?? inferredTitle ?? NameInference.Humanize(NameInference.EntryName(definition)),
                 detail,
-                description,
+                NameInference.OverrideDescription(definition) ?? description,
                 definition.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat));
             return true;
         }

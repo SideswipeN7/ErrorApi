@@ -148,3 +148,4 @@ public static class ArdalisResultHttpExtensions
 
     private static string? NullIfEmpty(string value) => string.IsNullOrEmpty(value) ? null : value;
 }
+

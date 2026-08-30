@@ -130,7 +130,7 @@ internal static class NameInference
             if (attribute.AttributeClass is not { Name: "CatalogExportAttribute" } cls
                 || cls.ContainingNamespace is not { Name: "ErrorApi" } ns
                 || !ns.ContainingNamespace.IsGlobalNamespace
-                || attribute.ConstructorArguments.Length != 2)
+                || attribute.ConstructorArguments.Length < 2)
             {
                 continue;
             }
@@ -140,6 +140,162 @@ internal static class NameInference
                 && attribute.ConstructorArguments[1].Value is string code)
             {
                 return code;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>The status (and title) the symbol's own assembly exported, when the full form was baked.</summary>
+    public static (int StatusCode, string? Title)? ExportedStatus(ISymbol symbol)
+    {
+        if (symbol.ContainingAssembly is not { } assembly)
+        {
+            return null;
+        }
+
+        string? memberId = null;
+
+        foreach (var attribute in assembly.GetAttributes())
+        {
+            if (attribute.AttributeClass is not { Name: "CatalogExportAttribute" } cls
+                || cls.ContainingNamespace is not { Name: "ErrorApi" } ns
+                || !ns.ContainingNamespace.IsGlobalNamespace
+                || attribute.ConstructorArguments.Length < 4)
+            {
+                continue;
+            }
+
+            memberId ??= symbol.GetDocumentationCommentId();
+            if (attribute.ConstructorArguments[0].Value is string id && id == memberId
+                && attribute.ConstructorArguments[2].Value is int status && status is >= 100 and <= 599)
+            {
+                return (status, attribute.ConstructorArguments[3].Value as string);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>The <c>[ErrorStatusCode]</c> override, when declared. The most specific status always wins.</summary>
+    public static int? OverrideStatus(ISymbol symbol)
+    {
+        foreach (var attribute in symbol.GetAttributes())
+        {
+            if (attribute.AttributeClass is { Name: "ErrorStatusCodeAttribute", ContainingNamespace: { Name: "ErrorApi" } ns }
+                && ns.ContainingNamespace.IsGlobalNamespace
+                && attribute.ConstructorArguments.Length == 1
+                && attribute.ConstructorArguments[0].Value is int status)
+            {
+                return status;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>The <c>[ErrorDescription]</c> override, when declared.</summary>
+    public static string? OverrideDescription(ISymbol symbol)
+    {
+        foreach (var attribute in symbol.GetAttributes())
+        {
+            if (attribute.AttributeClass is { Name: "ErrorDescriptionAttribute", ContainingNamespace: { Name: "ErrorApi" } ns }
+                && ns.ContainingNamespace.IsGlobalNamespace
+                && attribute.ConstructorArguments.Length == 1
+                && attribute.ConstructorArguments[0].Value is string description)
+            {
+                return description;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The status an entry inherits from its catalog —
+    /// <c>[ErrorCatalog("Order.Validation", 422)]</c> on a containing type, or on the assembly.
+    /// Nearest declaration wins, the same walk the prefix takes.
+    /// </summary>
+    public static int? CatalogDefaultStatus(ISymbol symbol)
+    {
+        for (var type = symbol is INamedTypeSymbol self ? self.ContainingType : symbol.ContainingType;
+             type is not null;
+             type = type.ContainingType)
+        {
+            if (DeclaredDefaultStatus(type) is { } declared)
+            {
+                return declared;
+            }
+        }
+
+        return symbol.ContainingAssembly is { } assembly ? DeclaredDefaultStatus(assembly) : null;
+    }
+
+    private static int? DeclaredDefaultStatus(ISymbol symbol)
+    {
+        foreach (var attribute in symbol.GetAttributes())
+        {
+            if (attribute.AttributeClass?.ToDisplayString() == ErrorCatalogAttributeName
+                && attribute.ConstructorArguments.Length == 2
+                && attribute.ConstructorArguments[1].Value is int status
+                && status is >= 100 and <= 599)
+            {
+                return status;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Reads the status — and a title, when a string literal sits beside it — out of an annotated
+    /// type's base constructor call. This is the shape of a library that already carries the data:
+    /// <c>record NotFound(Guid Id) : Expected("Order not found", 404)</c> has said everything an
+    /// <c>[Error]</c> needs, and repeating it in the attribute is the duplication this exists to remove.
+    /// </summary>
+    public static (int? StatusCode, string? Title) StatusFromBase(SyntaxNode declaration, SemanticModel model)
+    {
+        var arguments = declaration switch
+        {
+            TypeDeclarationSyntax { BaseList: { } bases } when bases.Types
+                .OfType<PrimaryConstructorBaseTypeSyntax>()
+                .FirstOrDefault() is { } primary => primary.ArgumentList.Arguments,
+            _ => Initializer(declaration),
+        };
+
+        if (arguments is not { } list)
+        {
+            return (null, null);
+        }
+
+        int? status = null;
+        string? title = null;
+
+        foreach (var argument in list)
+        {
+            var constant = model.GetConstantValue(argument.Expression).Value;
+            if (constant is int value && value is >= 100 and <= 599)
+            {
+                status ??= value;
+            }
+            else if (constant is string { Length: > 0 } text)
+            {
+                title ??= text;
+            }
+        }
+
+        return (status, status is null ? null : title);
+    }
+
+    private static SeparatedSyntaxList<ArgumentSyntax>? Initializer(SyntaxNode declaration)
+    {
+        // A class without a primary constructor passes base arguments through `: base(...)`.
+        foreach (var constructor in declaration.DescendantNodes().OfType<ConstructorDeclarationSyntax>())
+        {
+            if (constructor.Initializer is { } initializer
+                && initializer.ThisOrBaseKeyword.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.BaseKeyword))
+            {
+                return initializer.ArgumentList.Arguments;
             }
         }
 
