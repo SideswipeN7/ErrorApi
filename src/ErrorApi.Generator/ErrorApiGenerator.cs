@@ -35,6 +35,17 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
                 static (ctx, _) => CatalogParser.Parse(ctx))
             .Collect();
 
+        // The implicit form: [ErrorCatalog] on a type claims every static partial Error member inside,
+        // no [Error] required. Members that do carry [Error] flow through the provider above and are
+        // skipped here, so nothing is parsed twice.
+        var implicitCatalog = context.SyntaxProvider
+            .ForAttributeWithMetadataName(
+                Helpers.NameInference.ErrorCatalogAttributeName,
+                static (node, _) => node is TypeDeclarationSyntax,
+                static (ctx, _) => CatalogParser.ParseCatalogType(ctx))
+            .SelectMany(static (entries, _) => entries)
+            .Collect();
+
         var mapCalls = context.SyntaxProvider
             .CreateSyntaxProvider(
                 static (node, _) => node is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax member }
@@ -42,14 +53,19 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
                 static (ctx, _) => (InvocationExpressionSyntax)ctx.Node)
             .Collect();
 
-        var input = context.CompilationProvider.Combine(catalog).Combine(mapCalls)
+        var input = context.CompilationProvider.Combine(catalog).Combine(implicitCatalog).Combine(mapCalls)
             .Combine(context.AnalyzerConfigOptionsProvider);
 
         // The walk has to see the whole compilation, so it re-runs on every edit — but it funnels into
         // one value-equatable model here, which means an edit that does not change the outcome leaves
         // the emit step cached: no re-added sources, no re-parsed generated files in the IDE.
         var model = input.Select(static (data, cancellationToken) =>
-                Build(data.Left.Left.Left, data.Left.Left.Right, data.Left.Right, data.Right, cancellationToken))
+                Build(
+                    data.Left.Left.Left.Left,
+                    data.Left.Left.Left.Right.AddRange(data.Left.Left.Right),
+                    data.Left.Right,
+                    data.Right,
+                    cancellationToken))
             .WithTrackingName(ModelStepName);
 
         context.RegisterSourceOutput(model, static (spc, result) => Emit(spc, result));

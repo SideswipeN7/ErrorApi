@@ -300,17 +300,27 @@ public static class OrderErrors
 }
 ```
 
-And the fast-catalog shape for a validation family:
+And the fast-catalog shape for a validation family — inside an `[ErrorCatalog]` type, a
+`static partial Error` member **is** an entry, no `[Error]` needed at all; the class declares
+membership, the members declare names:
 
 ```csharp
 [ErrorCatalog("Order.Validation", 422)]
 public static partial class ValidationErrors
 {
-    [Error] public static partial Error InvalidOrder { get; }                     // Order.Validation.InvalidOrder, 422
-    [Error, ErrorStatusCode(400)] public static partial Error MalformedId { get; }
-    [Error, ErrorDescription("The total must be positive.")] public static partial Error InvalidTotal { get; }
+    public static partial Error InvalidOrder { get; }                     // Order.Validation.InvalidOrder, 422
+    public static partial Error MissingCustomer { get; }                  // Order.Validation.MissingCustomer, 422
+
+    [ErrorStatusCode(400)]
+    public static partial Error MalformedId { get; }                      // 400
+
+    [ErrorDescription("The total must be positive.")]
+    public static partial Error InvalidTotal { get; }                     // 422, with docs prose
 }
 ```
+
+A member that is not `partial` — a helper with its own body — is never claimed implicitly, and a
+partial member you implement yourself stays your own; `[Error]` remains the explicit opt-in for both.
 
 `[ErrorDescription]` is the documentation prose as its own attribute, so an entry that inherits
 everything else still carries one line of docs; it overrides `[Error(Description = ...)]` the same way

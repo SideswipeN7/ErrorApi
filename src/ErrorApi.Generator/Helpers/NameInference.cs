@@ -88,9 +88,9 @@ internal static class NameInference
     /// so a catalog meant to be consumed from elsewhere should not lean on body inference.
     /// </remarks>
     public static string ResolveCode(
-        ISymbol symbol, AttributeData attribute, Compilation compilation, Func<SyntaxTree, SemanticModel> semanticModel)
+        ISymbol symbol, AttributeData? attribute, Compilation compilation, Func<SyntaxTree, SemanticModel> semanticModel)
     {
-        if (attribute.ConstructorArguments.Length == 2 && attribute.ConstructorArguments[0].Value is string declared)
+        if (attribute is { ConstructorArguments.Length: 2 } && attribute.ConstructorArguments[0].Value is string declared)
         {
             return declared;
         }

@@ -18,7 +18,7 @@ that introduces reflection on the request path, is going the wrong way.
 
 ```bash
 dotnet build ErrorApi.slnx                       # must be warning-free
-dotnet test ErrorApi.slnx                        # 239 tests across nine suites
+dotnet test ErrorApi.slnx                        # 242 tests across nine suites
 dotnet run -c Release --project benchmarks/ErrorApi.Benchmarks   # request-path cost, in-process (SAC-safe)
 ERRORAPI_ACCEPT_SNAPSHOTS=1 dotnet test ErrorApi.slnx   # re-approve snapshots, then read the diff
 dotnet run --project samples/Sample.Api          # /swagger, /scalar, /openapi/v1.json, /openapi/errors.ts
@@ -72,7 +72,11 @@ The generator does **not** reference `ErrorApi.Abstractions`. It matches attribu
    the 4-arg `CatalogExport(id, code, status, title)` and read back by consumers.
    `ErrorReachabilityWalker.TryBuildDescriptor` resolves codes AND statuses through the same helpers,
    because the walk has to agree with the catalog it is walking towards; a change to one order without
-   the other silently empties endpoint contracts.
+   the other silently empties endpoint contracts. **The implicit form** — an unannotated
+   `static partial Error` member of an `[ErrorCatalog]` type is an entry by membership — lives twice
+   for the same reason: `CatalogParser.ParseCatalogType` (its own FAWMN provider over
+   `ErrorCatalogAttribute`) and `TryBuildImplicitDescriptor` in the walker (where a metadata symbol
+   carries no partiality, so membership + a resolvable status decide). Change one, change both.
 2. **`EndpointScanner`** resolves each `Map*` call site: route template (including `MapGroup` prefixes
    followed back through locals), HTTP method, handler expression, and the API description group —
    `WithGroupName` literals, and Asp.Versioning literals (`HasApiVersion`/`MapToApiVersion`/

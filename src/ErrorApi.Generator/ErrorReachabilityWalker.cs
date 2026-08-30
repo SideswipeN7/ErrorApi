@@ -833,7 +833,80 @@ internal sealed class ErrorReachabilityWalker
             return true;
         }
 
+        return TryBuildImplicitDescriptor(definition, out descriptor);
+    }
+
+    /// <summary>
+    /// The implicit form, mirroring <c>CatalogParser.ParseCatalogType</c>: a static member returning
+    /// <c>ErrorApi.Error</c> inside an <c>[ErrorCatalog]</c> type is an entry by membership, no
+    /// <c>[Error]</c> required — provided its status resolves ([ErrorStatusCode] or the catalog's
+    /// default). For a source symbol the member must be an unimplemented partial (the author's own
+    /// bodies stay their own); a metadata symbol carries no partiality, so membership decides.
+    /// </summary>
+    private bool TryBuildImplicitDescriptor(ISymbol definition, out DiscoveredError descriptor)
+    {
         descriptor = null!;
+
+        var returnType = definition switch
+        {
+            IPropertySymbol { IsStatic: true } property => property.Type,
+            IMethodSymbol { IsStatic: true, MethodKind: MethodKind.Ordinary } method => method.ReturnType,
+            _ => null,
+        };
+
+        if (returnType is not INamedTypeSymbol { Name: "Error", ContainingNamespace: { Name: "ErrorApi" } errorNs }
+            || !errorNs.ContainingNamespace.IsGlobalNamespace
+            || definition.ContainingType is not { } containingType
+            || !HasErrorCatalog(containingType))
+        {
+            return false;
+        }
+
+        if (definition.DeclaringSyntaxReferences.Length > 0)
+        {
+            var isUnimplementedPartial = definition switch
+            {
+                IMethodSymbol { IsPartialDefinition: true, PartialImplementationPart: null } => true,
+                IPropertySymbol { PartialImplementationPart: null } property =>
+                    property.DeclaringSyntaxReferences.Any(r =>
+                        r.GetSyntax() is MemberDeclarationSyntax member
+                        && member.Modifiers.Any(m => m.ValueText == "partial")),
+                _ => false,
+            };
+
+            if (!isUnimplementedPartial)
+            {
+                return false;
+            }
+        }
+
+        var status = NameInference.OverrideStatus(definition) ?? NameInference.CatalogDefaultStatus(definition);
+        if (status is null)
+        {
+            return false;
+        }
+
+        descriptor = new DiscoveredError(
+            NameInference.ResolveCode(definition, attribute: null, _compilation, GetModel),
+            status.Value,
+            NameInference.Humanize(NameInference.EntryName(definition)),
+            null,
+            NameInference.OverrideDescription(definition),
+            definition.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat));
+        return true;
+    }
+
+    private static bool HasErrorCatalog(INamedTypeSymbol type)
+    {
+        foreach (var attribute in type.GetAttributes())
+        {
+            if (attribute.AttributeClass is { Name: "ErrorCatalogAttribute", ContainingNamespace: { Name: "ErrorApi" } ns }
+                && ns.ContainingNamespace.IsGlobalNamespace)
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 }

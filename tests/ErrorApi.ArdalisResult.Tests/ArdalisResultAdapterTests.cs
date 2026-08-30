@@ -159,3 +159,4 @@ public sealed class ArdalisResultDiscoveryTests
             StringComparison.Ordinal);
     }
 }
+

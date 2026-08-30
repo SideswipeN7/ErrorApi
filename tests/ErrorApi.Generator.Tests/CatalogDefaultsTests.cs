@@ -169,6 +169,129 @@ public sealed class CatalogDefaultsTests
     }
 
     [Fact]
+    public void An_ErrorCatalog_claims_its_partial_Error_members_without_any_attribute()
+    {
+        // The fastest catalog there is: the class declares membership, the members declare names.
+        const string source = """
+            using ErrorApi;
+
+            namespace Shop;
+
+            [ErrorCatalog("Order.Validation", 422)]
+            public static partial class ValidationErrors
+            {
+                public static partial Error InvalidOrder { get; }
+                public static partial Error MissingCustomer { get; }
+
+                [ErrorStatusCode(400)]
+                public static partial Error MalformedId { get; }
+
+                // Not partial: the author's own helper, never an entry.
+                public static Error Wrap(string code) => new(code, 400);
+            }
+            """;
+
+        var output = GeneratorHarness.RunAndCompile(source);
+        var metadata = output.Source("ErrorApi.Metadata.g.cs");
+
+        Assert.Empty(output.GeneratorDiagnostics);
+
+        Assert.Contains("\"Order.Validation.InvalidOrder\", 422", metadata, StringComparison.Ordinal);
+        Assert.Contains("\"Order.Validation.MissingCustomer\", 422", metadata, StringComparison.Ordinal);
+        Assert.Contains("\"Order.Validation.MalformedId\", 400", metadata, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"Order.Validation.Wrap\"", metadata, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_implicit_member_is_discovered_by_the_walk_like_any_entry()
+    {
+        const string source = """
+            using System;
+            using ErrorApi;
+            using Microsoft.AspNetCore.Builder;
+            using Microsoft.AspNetCore.Http;
+            using Microsoft.AspNetCore.Routing;
+
+            namespace Shop;
+
+            [ErrorCatalog("Orders", 404)]
+            public static partial class OrderErrors
+            {
+                public static partial Error NotFound { get; }
+            }
+
+            public static class Endpoints
+            {
+                public static void Map(IEndpointRouteBuilder app) =>
+                    app.MapGet("/orders/{id:guid}", (Guid id) =>
+                    {
+                        if (id == Guid.Empty)
+                        {
+                            return (IResult)OrderErrors.NotFound.ToProblem();
+                        }
+
+                        return Results.Ok();
+                    });
+            }
+            """;
+
+        var output = GeneratorHarness.RunAndCompile(source);
+
+        Assert.Empty(output.GeneratorDiagnostics);
+        Assert.Contains(
+            "new global::ErrorApi.EndpointErrors(\"GET\", \"/orders/{id}\", new global::ErrorApi.ErrorDescriptor[] { _errors[0] })",
+            output.Source("ErrorApi.Metadata.g.cs"),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_implicit_catalog_survives_the_assembly_boundary()
+    {
+        const string library = """
+            using ErrorApi;
+
+            namespace Shared;
+
+            [ErrorCatalog("Orders", 404)]
+            public static partial class OrderErrors
+            {
+                public static partial Error NotFound { get; }
+            }
+
+            public interface IOrderService { Result<int> GetById(System.Guid id); }
+
+            public sealed class OrderService : IOrderService
+            {
+                public Result<int> GetById(System.Guid id) => id == System.Guid.Empty ? OrderErrors.NotFound : 1;
+            }
+            """;
+
+        var reference = GeneratorHarness.CompileToReference("Shared.Orders", library);
+
+        const string api = """
+            using System;
+            using ErrorApi;
+            using Shared;
+            using Microsoft.AspNetCore.Builder;
+            using Microsoft.AspNetCore.Http;
+            using Microsoft.AspNetCore.Routing;
+
+            public static class Endpoints
+            {
+                public static void Map(IEndpointRouteBuilder app) =>
+                    app.MapGet("/orders/{id:guid}", (Guid id, IOrderService s) => s.GetById(id).ToHttpResult());
+            }
+            """;
+
+        var output = GeneratorHarness.Run([reference], api);
+
+        // The foreign catalog member carries no [Error] at all; membership plus the catalog default
+        // resolve it on the consumer's side, through the export the library baked.
+        Assert.Empty(output.GeneratorDiagnostics);
+        Assert.Contains("\"Orders.NotFound\", 404", output.Source("ErrorApi.Metadata.g.cs"), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_bare_Error_with_nothing_to_infer_from_is_invalid()
     {
         const string source = """

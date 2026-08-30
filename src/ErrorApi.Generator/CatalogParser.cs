@@ -51,17 +51,74 @@ internal static class CatalogParser
     }
     public const string ErrorTypeName = "ErrorApi.Error";
 
-    public static ParsedCatalogEntry Parse(GeneratorAttributeSyntaxContext context)
+    public static ParsedCatalogEntry Parse(GeneratorAttributeSyntaxContext context) =>
+        ParseCore(context.TargetSymbol, context.TargetNode, context.SemanticModel, context.Attributes[0]);
+
+    /// <summary>
+    /// <c>[ErrorCatalog]</c> on a type makes membership the declaration: every <c>static partial</c>
+    /// member returning <see cref="ErrorTypeName"/> inside is an entry, no <c>[Error]</c> needed —
+    /// the catalog names the prefix and (optionally) the status, the member names the code.
+    /// Members that carry <c>[Error]</c> flow through <see cref="Parse"/> and are skipped here;
+    /// a member with a hand-written implementation part stays the author's own.
+    /// </summary>
+    public static ImmutableArray<ParsedCatalogEntry> ParseCatalogType(GeneratorAttributeSyntaxContext context)
     {
-        var symbol = context.TargetSymbol;
-        var node = context.TargetNode;
+        if (context.TargetSymbol is not INamedTypeSymbol type)
+        {
+            return ImmutableArray<ParsedCatalogEntry>.Empty;
+        }
+
+        var results = ImmutableArray.CreateBuilder<ParsedCatalogEntry>();
+
+        foreach (var member in type.GetMembers())
+        {
+            var isImplicitEntry = member switch
+            {
+                IPropertySymbol { IsStatic: true, PartialImplementationPart: null } property =>
+                    property.Type.ToDisplayString() == ErrorTypeName,
+                IMethodSymbol { IsStatic: true, MethodKind: MethodKind.Ordinary, IsPartialDefinition: true, PartialImplementationPart: null } method =>
+                    method.ReturnType.ToDisplayString() == ErrorTypeName,
+                _ => false,
+            };
+
+            if (!isImplicitEntry || HasErrorAttribute(member))
+            {
+                continue;
+            }
+
+            foreach (var reference in member.DeclaringSyntaxReferences)
+            {
+                if (reference.GetSyntax() is not MemberDeclarationSyntax node
+                    || !node.Modifiers.Any(SyntaxKind.PartialKeyword))
+                {
+                    continue;
+                }
+
+                var model = node.SyntaxTree == context.SemanticModel.SyntaxTree
+                    ? context.SemanticModel
+                    : context.SemanticModel.Compilation.GetSemanticModel(node.SyntaxTree);
+
+                results.Add(ParseCore(member, node, model, attribute: null));
+                break;
+            }
+        }
+
+        return results.ToImmutable();
+    }
+
+    private static bool HasErrorAttribute(ISymbol symbol) =>
+        symbol.GetAttributes().Any(a =>
+            a.AttributeClass is { Name: "ErrorAttribute", ContainingNamespace: { Name: "ErrorApi" } ns }
+            && ns.ContainingNamespace.IsGlobalNamespace);
+
+    private static ParsedCatalogEntry ParseCore(ISymbol symbol, SyntaxNode node, SemanticModel semanticModel, AttributeData? attribute)
+    {
         var display = symbol.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat);
 
-        var attribute = context.Attributes[0];
-
         // [Error] infers everything; [Error(404)] leaves the code to be inferred;
-        // [Error("Orders.NotFound", 404)] spells both out.
-        var arguments = attribute.ConstructorArguments;
+        // [Error("Orders.NotFound", 404)] spells both out. No attribute at all is the implicit form:
+        // a partial Error member claimed by its [ErrorCatalog] type.
+        var arguments = attribute?.ConstructorArguments ?? ImmutableArray<TypedConstant>.Empty;
         string? declaredCode;
         int? statusCode;
 
@@ -87,7 +144,7 @@ internal static class CatalogParser
         }
 
         string? title = null, detail = null, description = null;
-        foreach (var named in attribute.NamedArguments)
+        foreach (var named in attribute?.NamedArguments ?? ImmutableArray<KeyValuePair<string, TypedConstant>>.Empty)
         {
             var value = named.Value.Value as string;
             switch (named.Key)
@@ -109,7 +166,7 @@ internal static class CatalogParser
         if (statusCode is null && symbol is INamedTypeSymbol)
         {
             // The library the type extends may already carry the data — Expected("Order not found", 404).
-            (statusCode, inferredTitle) = NameInference.StatusFromBase(node, context.SemanticModel);
+            (statusCode, inferredTitle) = NameInference.StatusFromBase(node, semanticModel);
             statusFromSource = statusCode is not null;
         }
 
@@ -118,7 +175,7 @@ internal static class CatalogParser
             return Invalid(
                 node,
                 display,
-                "the [Error] names no status code, the catalog declares no default ([ErrorCatalog(prefix, statusCode)]), and none could be read from the base constructor");
+                "the entry has no status code: give it [Error(statusCode)] or [ErrorStatusCode], set a catalog default with [ErrorCatalog(prefix, statusCode)], or (on a type) pass it in the base constructor");
         }
 
         if (statusCode is < 100 or > 599)
@@ -127,7 +184,7 @@ internal static class CatalogParser
         }
 
         var isErrorType = symbol is INamedTypeSymbol;
-        var bodyCode = NameInference.CodeFromBody(node, context.SemanticModel);
+        var bodyCode = NameInference.CodeFromBody(node, semanticModel);
 
         var code = declaredCode ?? bodyCode ?? NameInference.CodeFromName(symbol, isErrorType);
         title ??= inferredTitle ?? NameInference.Humanize(NameInference.EntryName(symbol));
@@ -333,3 +390,4 @@ internal static class CatalogParser
 
 /// <summary>The outcome of parsing a single <c>[Error]</c> declaration.</summary>
 internal sealed record ParsedCatalogEntry(CatalogEntry? Entry, DiagnosticInfo? Diagnostic);
+
