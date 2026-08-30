@@ -256,5 +256,5 @@ native-AOT clean.
 
 ## Full documentation
 
-[github.com/SideswipeN7/ErrorApi](https://github.com/SideswipeN7/ErrorApi) — how discovery works, the `EAPI001`–`EAPI007`
+[github.com/SideswipeN7/ErrorApi](https://github.com/SideswipeN7/ErrorApi) — how discovery works, the `EAPI001`–`EAPI013`
 diagnostics, the TypeScript contract, and the ErrorOr and language-ext adapters.

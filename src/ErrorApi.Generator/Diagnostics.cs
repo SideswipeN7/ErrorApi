@@ -105,6 +105,15 @@ internal static class Diagnostics
         isEnabledByDefault: true,
         description: "A library baking its reachability walks its own source; a dispatch it cannot see past leaves the export incomplete, which reads as complete on the consumer's side. Declare the missing failures with [ProducesError] on the member or on the message type, or keep the handler in this compilation.");
 
+    public static readonly DiagnosticDescriptor ConflictingStatusDeclarations = new(
+        id: "EAPI013",
+        title: "Two status declarations disagree on one entry",
+        messageFormat: "'{0}' declares status {1} on [Error] and status {2} on [ErrorStatusCode]; the override wins, but one of them is stale",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Info,
+        isEnabledByDefault: true,
+        description: "The most specific declaration always wins, so the [ErrorStatusCode] value is the one documented and returned. Two disagreeing statuses on one entry usually means an edit updated one and missed the other — drop the [Error] argument, or the override.");
+
     public static readonly DiagnosticDescriptor UnresolvedHandler = new(
         id: "EAPI007",
         title: "Endpoint handler could not be resolved",

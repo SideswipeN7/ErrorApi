@@ -115,39 +115,10 @@ public sealed class ErrorApiOptions
     }
 
     /// <summary>
-    /// The namespace the generator derives from an assembly name — kept in step with the emitter's
-    /// twin, the same way the two <c>RoutePattern.Normalize</c> copies are.
+    /// The namespace the generator derives from an assembly name. Both sides compile the same linked
+    /// source — <c>src/Shared/SharedNormalization.cs</c> — so the emitter and this lookup cannot drift.
     /// </summary>
-    internal static string SanitizeNamespace(string assemblyName)
-    {
-        if (string.IsNullOrEmpty(assemblyName))
-        {
-            return "ErrorApiAssembly";
-        }
-
-        var builder = new System.Text.StringBuilder(assemblyName.Length);
-        var startOfSegment = true;
-
-        foreach (var c in assemblyName)
-        {
-            if (c == '.')
-            {
-                builder.Append('.');
-                startOfSegment = true;
-                continue;
-            }
-
-            var valid = char.IsLetterOrDigit(c) || c == '_' ? c : '_';
-            if (startOfSegment && char.IsDigit(valid))
-            {
-                builder.Append('_');
-            }
-
-            builder.Append(valid);
-            startOfSegment = false;
-        }
-
-        return builder.ToString();
-    }
+    internal static string SanitizeNamespace(string assemblyName) =>
+        Shared.SharedNormalization.SanitizeNamespace(assemblyName);
 }
 

@@ -55,6 +55,29 @@ jobs:
           name: packages
           path: artifacts/*.nupkg
 
+  # The request-path benchmarks, run per push so the numbers are tracked instead of being a one-off
+  # local snapshot. Not a gate — shared-runner timings are too noisy for thresholds — but every run's
+  # full BenchmarkDotNet output is kept as a workflow artifact, so a mapping-path regression has a
+  # commit-by-commit paper trail. Only main pushes; PRs skip the ~5 minutes.
+  benchmarks:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Run benchmarks
+        run: dotnet run -c Release --project benchmarks/ErrorApi.Benchmarks
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.sha }}
+          path: benchmarks/ErrorApi.Benchmarks/BenchmarkDotNet.Artifacts/results/*
+          if-no-files-found: error
+
   # Each adapter is pinned to one version of its library, but has to keep working across the range
   # people actually have installed. The suites take a version override so this stays one job per pair.
   adapters:

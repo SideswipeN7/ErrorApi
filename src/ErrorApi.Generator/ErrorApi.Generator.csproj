@@ -25,4 +25,8 @@
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" PrivateAssets="all" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Shared\SharedNormalization.cs" Link="Shared\SharedNormalization.cs" />
+  </ItemGroup>
+
 </Project>

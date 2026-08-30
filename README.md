@@ -332,6 +332,21 @@ the declaring assembly as `[assembly: CatalogExport(...)]` (code alone, or code 
 reads it back through the reference. The declaring assembly's resolution is authoritative everywhere;
 nothing drifts, and nothing needs to be spelled twice.
 
+### Which attribute, when
+
+| You want | Write |
+| --- | --- |
+| The classic entry | `[Error(404)]` on a `static partial Error` member of an `[ErrorCatalog("Orders")]` class |
+| An explicit wire code | `[Error("Orders.NotFound", 404)]` |
+| A same-status family, one line per entry | `[ErrorCatalog("Order.Validation", 422)]` on the class — bare `static partial Error` members inside need **no attribute at all** |
+| To adopt a library type that already carries the data | bare `[Error]` on the type — status and title read from the base constructor (`: Expected("msg", 404)`) |
+| To override one entry | `[ErrorStatusCode(400)]` and/or `[ErrorDescription("…")]` — beats everything less specific (`EAPI013` tells you when the beaten declaration went stale) |
+| A failure behind something the walk cannot cross | `[ProducesError("Orders.NotFound")]` or `[ProducesError(typeof(TimeoutException))]` — on the endpoint, the handler, or the message type |
+| A catalog entry for a type nobody can annotate | `[assembly: ErrorMapping(typeof(TimeoutException), "Gateway.Timeout", 504)]` |
+| To silence one diagnostic on one declaration | `[SuppressErrorApi("EAPI010")]` |
+
+`CatalogExport`/`ReachabilityExport` are emitted by the generator, never written by hand.
+
 ---
 
 ## Bring your own Result type
@@ -751,6 +766,7 @@ in a project of its own and the rule has nothing to check it against.
 | `EAPI010` | Warning | A declared error is not returned by any endpoint in the project. |
 | `EAPI011` | Warning | The same route is mapped more than once with no distinct API description groups, so the contracts merged into one. |
 | `EAPI012` | Info | A reachability export stopped at a dispatcher; what this library bakes for its consumers is incomplete. |
+| `EAPI013` | Info | `[Error]` and `[ErrorStatusCode]` declare different statuses on one entry; the override wins, but one of them is stale. |
 
 Generator diagnostics are not suppressible with `#pragma`. For a deliberate one-off, silence the rule where it fires — `[SuppressErrorApi("EAPI010")]` on the member, or on the mapping method / handler for the endpoint rules — and keep `.editorconfig` / `<NoWarn>` for project-wide tuning.
 

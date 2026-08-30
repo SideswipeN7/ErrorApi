@@ -94,36 +94,12 @@ internal static class MetadataEmitter
     }
 
     /// <summary>
-    /// The namespace derived from an assembly name. Kept in step with its runtime twin,
-    /// <c>ErrorApiOptions.SanitizeNamespace</c>, the same way the two <c>RoutePattern.Normalize</c>
-    /// copies are — change one, change both.
+    /// The namespace derived from an assembly name. The runtime lookup
+    /// (<c>ErrorApiOptions.SanitizeNamespace</c>) compiles the same linked source —
+    /// <c>src/Shared/SharedNormalization.cs</c> — so the two cannot drift.
     /// </summary>
-    private static string SanitizeNamespace(string assemblyName)
-    {
-        var builder = new System.Text.StringBuilder(assemblyName.Length);
-        var startOfSegment = true;
-
-        foreach (var c in assemblyName)
-        {
-            if (c == '.')
-            {
-                builder.Append('.');
-                startOfSegment = true;
-                continue;
-            }
-
-            var valid = char.IsLetterOrDigit(c) || c == '_' ? c : '_';
-            if (startOfSegment && char.IsDigit(valid))
-            {
-                builder.Append('_');
-            }
-
-            builder.Append(valid);
-            startOfSegment = false;
-        }
-
-        return builder.ToString();
-    }
+    private static string SanitizeNamespace(string assemblyName) =>
+        Shared.SharedNormalization.SanitizeNamespace(assemblyName);
 
     private static void WriteErrorTable(SourceWriter writer, IReadOnlyList<DiscoveredError> errors)
     {

@@ -157,7 +157,17 @@ internal static class CatalogParser
 
         // The most specific declaration wins: [ErrorStatusCode]/[ErrorDescription] on the member beat
         // the [Error] arguments, which beat the catalog's default, which beats the base constructor.
-        statusCode = NameInference.OverrideStatus(symbol) ?? statusCode ?? NameInference.CatalogDefaultStatus(symbol);
+        var overrideStatus = NameInference.OverrideStatus(symbol);
+
+        // Two disagreeing statuses on one entry usually means an edit missed one of them.
+        DiagnosticInfo? conflict = overrideStatus is not null && statusCode is not null && overrideStatus != statusCode
+            ? DiagnosticInfo.Create(
+                Diagnostics.ConflictingStatusDeclarations, node, display,
+                statusCode.Value.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                overrideStatus.Value.ToString(System.Globalization.CultureInfo.InvariantCulture))
+            : null;
+
+        statusCode = overrideStatus ?? statusCode ?? NameInference.CatalogDefaultStatus(symbol);
         description = NameInference.OverrideDescription(symbol) ?? description;
 
         string? inferredTitle = null;
@@ -217,7 +227,12 @@ internal static class CatalogParser
             };
         }
 
-        return drift is null || parsed.Diagnostic is not null ? parsed : parsed with { Diagnostic = drift };
+        if (parsed.Diagnostic is null && drift is not null)
+        {
+            parsed = parsed with { Diagnostic = drift };
+        }
+
+        return parsed.Diagnostic is null && conflict is not null ? parsed with { Diagnostic = conflict } : parsed;
     }
 
     /// <summary>

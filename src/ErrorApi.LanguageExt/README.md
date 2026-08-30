@@ -32,27 +32,31 @@ public sealed record OrderNotFound(Guid Id) : Expected("Order not found", 404);
 public sealed record OrderAlreadyPaid(Guid Id) : Expected("Order already paid", 409);
 ```
 
-After — one attribute per type. The numeric code language-ext carries is not a wire contract, so
-the attribute adds the code a client can switch on and the status the document will promise:
+After — a bare attribute per type. Your `Expected` already carries the message and the status, so the
+generator reads them from the base constructor call; the wire code comes from the name under the
+catalog's prefix. **Nothing is written twice:**
 
 ```csharp
 using LanguageExt.Common;
 
-[ErrorApi.Error("Orders.NotFound", 404, Title = "Order not found")]
-public sealed record OrderNotFound(Guid Id) : Expected("Order not found", 404);
+[ErrorApi.ErrorCatalog("Orders")]
+public static class OrderErrors
+{
+    [ErrorApi.Error]   // -> "Orders.NotFound", 404, "Order not found" — all read from the line below
+    public sealed record NotFound(Guid Id) : Expected("Order not found", 404);
 
-[ErrorApi.Error("Orders.AlreadyPaid", 409, Title = "Order already paid")]
-public sealed record OrderAlreadyPaid(Guid Id) : Expected("Order already paid", 409);
+    [ErrorApi.Error]   // -> "Orders.AlreadyPaid", 409
+    public sealed record AlreadyPaid(Guid Id) : Expected("Order already paid", 409);
+}
 ```
 
 > **Naming note.** language-ext and ErrorApi both ship a type called `Error`, so spell the attribute out
-> as `[ErrorApi.Error(...)]` — or add `using ErrorAttribute = ErrorApi.ErrorAttribute;` to the file and
-> keep writing `[Error(...)]`.
+> as `[ErrorApi.Error]` — or add `using ErrorAttribute = ErrorApi.ErrorAttribute;` to the file and
+> keep writing `[Error]`.
 
-The code and the title can be left to the generator: `[ErrorApi.Error(404)]` alone yields the code
-`OrderNotFound` and the title `Order not found`. This README spells them out because a dotted code
-reads better in a document shared with a frontend; `[assembly: ErrorApi.ErrorCatalog("Orders")]` puts
-a prefix in front of every inferred one.
+Everything stays overridable when you want it explicit: `[ErrorApi.Error("Orders.NotFound", 404, Title = "…")]`
+spells it all out, and `[ErrorApi.ErrorDescription("…")]` adds documentation prose to an otherwise
+bare entry.
 
 ### 2. The service
 
@@ -60,7 +64,7 @@ a prefix in front of every inferred one.
 
 ```csharp
 public Fin<Order> GetById(Guid id) =>
-    _orders.TryGetValue(id, out var order) ? order : new OrderNotFound(id);
+    _orders.TryGetValue(id, out var order) ? order : new OrderErrors.NotFound(id);
 ```
 
 ### 3. The endpoint
@@ -225,10 +229,10 @@ under `obj/generated/` after a build.
 Built against LanguageExt.Core 4.4.9, and verified in CI against **4.4.0 and 4.4.9**. Targets `net10.0`
 and is native-AOT clean.
 
-The v5 line reshapes `Error` and the monad hierarchy; it is not supported yet. If you are on v5, open an
-issue — the adapter is about eighty lines, and the compile-time half needs no changes at all.
+On the v5 beta? `ErrorApi.LanguageExt.V5` is the same surface compiled against the 5.x API, shipped as
+a prerelease that tracks the beta and goes stable the moment 5.0.0 does.
 
 ## Full documentation
 
-[github.com/SideswipeN7/ErrorApi](https://github.com/SideswipeN7/ErrorApi) — how discovery works, the `EAPI001`–`EAPI007`
+[github.com/SideswipeN7/ErrorApi](https://github.com/SideswipeN7/ErrorApi) — how discovery works, the `EAPI001`–`EAPI013`
 diagnostics, the TypeScript contract, and the ErrorOr and OneOf adapters.

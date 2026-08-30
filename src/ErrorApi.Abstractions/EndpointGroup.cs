@@ -11,48 +11,8 @@ public static class EndpointGroup
     /// <summary>
     /// Normalizes a group name for matching: trimmed, lower-cased, a leading <c>v</c> before a digit
     /// dropped, and a trailing <c>.0</c> of a numeric version dropped — so <c>"v1"</c>, <c>"V1"</c> and
-    /// <c>"1.0"</c> are the same group. Kept in step with its emit-time twin,
-    /// <c>GroupNormalizer.Normalize</c> in the generator — change one, change both.
+    /// <c>"1.0"</c> are the same group. The generator's case labels come from the same linked source
+    /// (<c>src/Shared/SharedNormalization.cs</c>), so the two sides cannot drift.
     /// </summary>
-    public static string? Normalize(string? group)
-    {
-        if (group is null)
-        {
-            return null;
-        }
-
-        var value = group.Trim();
-        if (value.Length == 0)
-        {
-            return null;
-        }
-
-        value = value.ToLowerInvariant();
-
-        if (value.Length > 1 && value[0] == 'v' && value[1] >= '0' && value[1] <= '9')
-        {
-            value = value.Substring(1);
-        }
-
-        while (value.Length > 2 && value.EndsWith(".0", StringComparison.Ordinal) && IsVersionNumber(value))
-        {
-            value = value.Substring(0, value.Length - 2);
-        }
-
-        return value;
-    }
-
-    private static bool IsVersionNumber(string value)
-    {
-        foreach (var c in value)
-        {
-            if ((c < '0' || c > '9') && c != '.')
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
+    public static string? Normalize(string? group) => Shared.SharedNormalization.NormalizeGroup(group);
 }
-

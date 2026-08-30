@@ -247,36 +247,59 @@ internal static class NameInference
         return null;
     }
 
+    /// <summary>Parameter names a library uses for the HTTP-status-like slot of its error type.</summary>
+    private static readonly string[] StatusParameterNames = ["status", "statusCode", "httpStatus", "httpStatusCode", "code"];
+
     /// <summary>
     /// Reads the status — and a title, when a string literal sits beside it — out of an annotated
     /// type's base constructor call. This is the shape of a library that already carries the data:
     /// <c>record NotFound(Guid Id) : Expected("Order not found", 404)</c> has said everything an
     /// <c>[Error]</c> needs, and repeating it in the attribute is the duplication this exists to remove.
+    /// The int is matched by its <em>parameter name</em> (<c>code</c>, <c>status</c>, …), so a base
+    /// constructor with an unrelated in-range int — a version, a size — never mis-infers; only when
+    /// the constructor cannot be resolved does a single unambiguous in-range literal count.
     /// </summary>
     public static (int? StatusCode, string? Title) StatusFromBase(SyntaxNode declaration, SemanticModel model)
     {
-        var arguments = declaration switch
+        (SeparatedSyntaxList<ArgumentSyntax> Arguments, SyntaxNode Target)? call = declaration switch
         {
             TypeDeclarationSyntax { BaseList: { } bases } when bases.Types
                 .OfType<PrimaryConstructorBaseTypeSyntax>()
-                .FirstOrDefault() is { } primary => primary.ArgumentList.Arguments,
+                .FirstOrDefault() is { } primary => (primary.ArgumentList.Arguments, primary),
             _ => Initializer(declaration),
         };
 
-        if (arguments is not { } list)
+        if (call is not { } found)
         {
             return (null, null);
         }
 
+        var constructor = model.GetSymbolInfo(found.Target).Symbol as IMethodSymbol;
+
         int? status = null;
         string? title = null;
+        var inRange = new List<int>();
 
-        foreach (var argument in list)
+        for (var i = 0; i < found.Arguments.Count; i++)
         {
+            var argument = found.Arguments[i];
             var constant = model.GetConstantValue(argument.Expression).Value;
+
             if (constant is int value && value is >= 100 and <= 599)
             {
-                status ??= value;
+                inRange.Add(value);
+
+                var parameter = argument.NameColon is { } named
+                    ? constructor?.Parameters.FirstOrDefault(p => p.Name == named.Name.Identifier.ValueText)
+                    : constructor is not null && i < constructor.Parameters.Length
+                        ? constructor.Parameters[i]
+                        : null;
+
+                if (parameter is not null
+                    && StatusParameterNames.Contains(parameter.Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    status ??= value;
+                }
             }
             else if (constant is string { Length: > 0 } text)
             {
@@ -284,10 +307,16 @@ internal static class NameInference
             }
         }
 
+        // With no constructor to name the slots, a lone in-range literal is still unambiguous.
+        if (status is null && constructor is null && inRange.Count == 1)
+        {
+            status = inRange[0];
+        }
+
         return (status, status is null ? null : title);
     }
 
-    private static SeparatedSyntaxList<ArgumentSyntax>? Initializer(SyntaxNode declaration)
+    private static (SeparatedSyntaxList<ArgumentSyntax> Arguments, SyntaxNode Target)? Initializer(SyntaxNode declaration)
     {
         // A class without a primary constructor passes base arguments through `: base(...)`.
         foreach (var constructor in declaration.DescendantNodes().OfType<ConstructorDeclarationSyntax>())
@@ -295,7 +324,7 @@ internal static class NameInference
             if (constructor.Initializer is { } initializer
                 && initializer.ThisOrBaseKeyword.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.BaseKeyword))
             {
-                return initializer.ArgumentList.Arguments;
+                return (initializer.ArgumentList.Arguments, initializer);
             }
         }
 

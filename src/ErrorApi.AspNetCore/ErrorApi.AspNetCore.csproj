@@ -37,4 +37,8 @@
     <None Include="buildTransitive\ErrorApi.AspNetCore.props" Pack="true" PackagePath="buildTransitive" Visible="false" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Shared\SharedNormalization.cs" Link="Shared\SharedNormalization.cs" />
+  </ItemGroup>
+
 </Project>

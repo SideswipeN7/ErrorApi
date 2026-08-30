@@ -292,6 +292,47 @@ public sealed class CatalogDefaultsTests
     }
 
     [Fact]
+    public void Two_disagreeing_status_declarations_are_reported()
+    {
+        const string source = """
+            using ErrorApi;
+
+            [ErrorCatalog("Orders")]
+            public static partial class OrderErrors
+            {
+                [Error(404), ErrorStatusCode(410)] public static partial Error Retired { get; }
+            }
+            """;
+
+        var output = GeneratorHarness.RunAndCompile(source);
+
+        // The override wins - and EAPI013 says one of the two is stale.
+        var reported = Assert.Single(output.GeneratorDiagnostics, d => d.Id == "EAPI013");
+        Assert.Contains("404", reported.GetMessage(), StringComparison.Ordinal);
+        Assert.Contains("410", reported.GetMessage(), StringComparison.Ordinal);
+        Assert.Contains("\"Orders.Retired\", 410", output.Source("ErrorApi.Metadata.g.cs"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_unrelated_in_range_int_in_the_base_constructor_does_not_mis_infer()
+    {
+        // The base ctor carries an int that happens to fall in 100-599 - a version, not a status.
+        // The slot is matched by parameter name, so nothing is inferred and the entry is invalid.
+        const string source = """
+            using System;
+            using ErrorApi;
+
+            public abstract record DomainEvent(string Name, int Version);
+
+            [Error]
+            public sealed record OrderArchived(Guid Id) : DomainEvent("order-archived", 202);
+            """;
+
+        var reported = Assert.Single(GeneratorHarness.Run(source).GeneratorDiagnostics, d => d.Id == "EAPI003");
+        Assert.Contains("no status code", reported.GetMessage(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_bare_Error_with_nothing_to_infer_from_is_invalid()
     {
         const string source = """

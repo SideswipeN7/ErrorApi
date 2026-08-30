@@ -224,5 +224,5 @@ and is native-AOT clean: resolution is a switch over string constants, never ref
 
 ## Full documentation
 
-[github.com/SideswipeN7/ErrorApi](https://github.com/SideswipeN7/ErrorApi) — how discovery works, the `EAPI001`–`EAPI007`
+[github.com/SideswipeN7/ErrorApi](https://github.com/SideswipeN7/ErrorApi) — how discovery works, the `EAPI001`–`EAPI013`
 diagnostics, the TypeScript contract, and the OneOf and language-ext adapters.
