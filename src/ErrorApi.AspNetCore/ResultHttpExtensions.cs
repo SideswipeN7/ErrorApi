@@ -25,25 +25,28 @@ public static class ResultHttpExtensions
     /// <summary>Maps a failure onto <c>application/problem+json</c>, carrying the error code as an extension member.</summary>
     public static ProblemHttpResult ToProblem(this Error error)
     {
-        var extensions = new Dictionary<string, object?>(StringComparer.Ordinal)
+        // Built as a ProblemDetails directly: the TypedResults.Problem(extensions:) overload would
+        // copy a temporary dictionary into the one ProblemDetails already owns — one dictionary and
+        // one copy per failure, measured on the benchmark's failure path, for nothing.
+        var problem = new Microsoft.AspNetCore.Mvc.ProblemDetails
         {
-            [CodeExtensionName] = error.Code,
+            Status = error.StatusCode,
+            Title = error.Title,
+            Detail = error.Detail,
+            Type = ProblemTypeUriFormat is null ? null : string.Format(ProblemTypeUriFormat, error.Code),
         };
+
+        problem.Extensions[CodeExtensionName] = error.Code;
 
         if (error.Extensions is not null)
         {
             foreach (var pair in error.Extensions)
             {
-                extensions[pair.Key] = pair.Value;
+                problem.Extensions[pair.Key] = pair.Value;
             }
         }
 
-        return TypedResults.Problem(
-            detail: error.Detail,
-            statusCode: error.StatusCode,
-            title: error.Title,
-            type: ProblemTypeUriFormat is null ? null : string.Format(ProblemTypeUriFormat, error.Code),
-            extensions: extensions);
+        return TypedResults.Problem(problem);
     }
 
     /// <summary>Maps success to <c>200 OK</c> with the value, and failure to <c>ProblemDetails</c>.</summary>

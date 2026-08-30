@@ -25,6 +25,9 @@
     <Project Path="tests/ErrorApi.LanguageExt.V5.Tests/ErrorApi.LanguageExt.V5.Tests.csproj" />
     <Project Path="tests/ErrorApi.Integration.Tests/ErrorApi.Integration.Tests.csproj" />
   </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/ErrorApi.Benchmarks/ErrorApi.Benchmarks.csproj" />
+  </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Sample.Api/Sample.Api.csproj" />
     <Project Path="samples/Sample.ErrorOr.Api/Sample.ErrorOr.Api.csproj" />

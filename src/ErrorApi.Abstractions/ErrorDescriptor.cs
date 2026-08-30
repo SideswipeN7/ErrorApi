@@ -39,8 +39,14 @@ public sealed class ErrorDescriptor
     /// <summary>Fully qualified catalog member the entry was declared on.</summary>
     public string DeclaringMember { get; }
 
-    /// <summary>Materializes the runtime <see cref="ErrorApi.Error"/> this entry describes.</summary>
-    public Error ToError() => new(Code, StatusCode, Title, Detail);
+    private Error? _error;
+
+    /// <summary>
+    /// Materializes the runtime <see cref="ErrorApi.Error"/> this entry describes. Both sides are
+    /// immutable, so the instance is built once and reused — descriptors live for the process and this
+    /// runs per failed request. A concurrent first call may build it twice; both are equal.
+    /// </summary>
+    public Error ToError() => _error ??= new(Code, StatusCode, Title, Detail);
 }
 
 /// <summary>The set of errors one endpoint can return, as discovered at compile time.</summary>

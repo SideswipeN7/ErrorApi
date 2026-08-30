@@ -96,15 +96,23 @@ public static class FluentResultsHttpExtensions
     {
         ArgumentNullException.ThrowIfNull(result);
 
-        var errors = result.Errors;
-        if (errors.Count == 0)
+        // result.Errors materializes a fresh list per call; the common single-error answer only needs
+        // the first IError, which a scan over Reasons finds without allocating.
+        var firstError = FirstError(result);
+        if (firstError is null)
         {
             return new ErrorApi.Error("Unknown", StatusCodes.Status500InternalServerError);
         }
 
-        var first = errors[0].ToErrorApiError(metadata);
+        var first = firstError.ToErrorApiError(metadata);
 
-        if (!IncludeAllErrors || errors.Count == 1)
+        if (!IncludeAllErrors)
+        {
+            return first;
+        }
+
+        var errors = result.Errors;
+        if (errors.Count == 1)
         {
             return first;
         }
@@ -118,39 +126,72 @@ public static class FluentResultsHttpExtensions
         return first.WithExtension("errors", rest);
     }
 
+    /// <summary>
+    /// FluentResults' <c>IsFailed</c> and <c>Errors</c> both run a LINQ <c>OfType</c> over
+    /// <c>Reasons</c> and allocate on every call — measurable on the success path, which should cost
+    /// nothing. A plain scan answers the same question for free.
+    /// </summary>
+    private static bool HasError(ResultBase result)
+    {
+        var reasons = result.Reasons;
+        for (var i = 0; i < reasons.Count; i++)
+        {
+            if (reasons[i] is IError)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static IError? FirstError(ResultBase result)
+    {
+        var reasons = result.Reasons;
+        for (var i = 0; i < reasons.Count; i++)
+        {
+            if (reasons[i] is IError error)
+            {
+                return error;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>Maps a failed result onto <c>application/problem+json</c>.</summary>
     public static IResult ToProblem(this ResultBase result) => result.ToErrorApiError().ToProblem();
 
     /// <summary>Maps success to <c>200 OK</c> and failure to <c>ProblemDetails</c>.</summary>
     public static IResult ToHttpResult<TValue>(this global::FluentResults.Result<TValue> result) =>
-        result.IsFailed ? result.ToProblem() : TypedResults.Ok(result.Value);
+        HasError(result) ? result.ToProblem() : TypedResults.Ok(result.ValueOrDefault!);
 
     /// <summary>Maps success through <paramref name="onSuccess"/> and failure to <c>ProblemDetails</c>.</summary>
     public static IResult ToHttpResult<TValue>(this global::FluentResults.Result<TValue> result, Func<TValue, IResult> onSuccess) =>
-        result.IsFailed ? result.ToProblem() : onSuccess(result.Value);
+        HasError(result) ? result.ToProblem() : onSuccess(result.ValueOrDefault!);
 
     /// <summary>Maps success to <c>204 No Content</c> and failure to <c>ProblemDetails</c>.</summary>
     public static IResult ToHttpResult(this global::FluentResults.Result result) =>
-        result.IsFailed ? result.ToProblem() : TypedResults.NoContent();
+        HasError(result) ? result.ToProblem() : TypedResults.NoContent();
 
     /// <summary>Maps success to <c>204 No Content</c> and failure to <c>ProblemDetails</c>.</summary>
     public static IResult ToNoContentResult<TValue>(this global::FluentResults.Result<TValue> result) =>
-        result.IsFailed ? result.ToProblem() : TypedResults.NoContent();
+        HasError(result) ? result.ToProblem() : TypedResults.NoContent();
 
     /// <summary>Maps success to <c>201 Created</c> at a fixed location, and failure to <c>ProblemDetails</c>.</summary>
     public static IResult ToCreated<TValue>(this global::FluentResults.Result<TValue> result, string location) =>
-        result.IsFailed ? result.ToProblem() : TypedResults.Created(location, result.Value);
+        HasError(result) ? result.ToProblem() : TypedResults.Created(location, result.ValueOrDefault!);
 
     /// <summary>
     /// Maps success to <c>201 Created</c> at a location built from the created value, and failure to
     /// <c>ProblemDetails</c>.
     /// </summary>
     public static IResult ToCreated<TValue>(this global::FluentResults.Result<TValue> result, Func<TValue, string> location) =>
-        result.IsFailed ? result.ToProblem() : TypedResults.Created(location(result.Value), result.Value);
+        HasError(result) ? result.ToProblem() : TypedResults.Created(location(result.ValueOrDefault!), result.ValueOrDefault!);
 
     /// <summary>The <see cref="Uri"/> twin of the string-location form — its own name, so a throwing lambda is never ambiguous between the two.</summary>
     public static IResult ToCreatedAtUri<TValue>(this global::FluentResults.Result<TValue> result, Func<TValue, Uri> location) =>
-        result.IsFailed ? result.ToProblem() : TypedResults.Created(location(result.Value), result.Value);
+        HasError(result) ? result.ToProblem() : TypedResults.Created(location(result.ValueOrDefault!), result.ValueOrDefault!);
 
     /// <summary>
     /// Maps success to <c>201 Created</c> pointing at a named endpoint, and failure to
@@ -161,7 +202,7 @@ public static class FluentResultsHttpExtensions
         this global::FluentResults.Result<TValue> result, string routeName, Func<TValue, RouteValueDictionary> routeValues) =>
         result.IsFailed
             ? result.ToProblem()
-            : TypedResults.CreatedAtRoute(result.Value, routeName, routeValues(result.Value));
+            : TypedResults.CreatedAtRoute(result.ValueOrDefault!, routeName, routeValues(result.ValueOrDefault!));
 
     /// <inheritdoc cref="ToHttpResult{TValue}(FluentResults.Result{TValue})"/>
     public static async Task<IResult> ToHttpResult<TValue>(this Task<global::FluentResults.Result<TValue>> result) =>

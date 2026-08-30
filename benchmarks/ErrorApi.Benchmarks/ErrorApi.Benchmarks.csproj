@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!-- The bench catalog deliberately declares more codes than its two scanned endpoints reach. -->
+    <NoWarn>$(NoWarn);EAPI010</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="BenchmarkDotNet" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ErrorApi.AspNetCore\ErrorApi.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\ErrorApi.ErrorOr\ErrorApi.ErrorOr.csproj" />
+    <ProjectReference Include="..\..\src\ErrorApi.OneOf\ErrorApi.OneOf.csproj" />
+    <!-- The v4 adapter; ErrorApi.LanguageExt.V5 has the identical surface but pins a conflicting
+         LanguageExt.Core, so one app can only ever host one of them. -->
+    <ProjectReference Include="..\..\src\ErrorApi.LanguageExt\ErrorApi.LanguageExt.csproj" />
+    <ProjectReference Include="..\..\src\ErrorApi.FluentResults\ErrorApi.FluentResults.csproj" />
+    <ProjectReference Include="..\..\src\ErrorApi.ArdalisResult\ErrorApi.ArdalisResult.csproj" />
+    <ProjectReference Include="..\..\src\ErrorApi.CSharpFunctionalExtensions\ErrorApi.CSharpFunctionalExtensions.csproj" />
+    <ProjectReference Include="..\..\src\ErrorApi.Generator\ErrorApi.Generator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>

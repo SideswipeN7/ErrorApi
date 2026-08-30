@@ -18,7 +18,8 @@ that introduces reflection on the request path, is going the wrong way.
 
 ```bash
 dotnet build ErrorApi.slnx                       # must be warning-free
-dotnet test ErrorApi.slnx                        # 229 tests across nine suites
+dotnet test ErrorApi.slnx                        # 234 tests across nine suites
+dotnet run -c Release --project benchmarks/ErrorApi.Benchmarks   # request-path cost, in-process (SAC-safe)
 ERRORAPI_ACCEPT_SNAPSHOTS=1 dotnet test ErrorApi.slnx   # re-approve snapshots, then read the diff
 dotnet run --project samples/Sample.Api          # /swagger, /scalar, /openapi/v1.json, /openapi/errors.ts
 dotnet run --project samples/Sample.ErrorOr.Api  # and .OneOf. / .LanguageExt. — same API, same contract
@@ -40,6 +41,7 @@ over it during a normal build; an IL2026/IL3050 warning there is a real regressi
 | `tests/ErrorApi.Generator.Tests` | `net10.0` | core snapshot and behaviour tests; references no result library |
 | `tests/ErrorApi.{ErrorOr,OneOf,LanguageExt,LanguageExt.V5,FluentResults,ArdalisResult,CSharpFunctionalExtensions}.Tests` | `net10.0` | one suite per adapter, version overridable |
 | `tests/ErrorApi.Integration.Tests` | `net10.0` | three samples under `WebApplicationFactory` (aliased `ProjectReference`s): live OpenAPI, live problem responses, the served TS contract |
+| `benchmarks/ErrorApi.Benchmarks` | `net10.0` | BenchmarkDotNet over the request path: generated lookups, base mapping, every adapter, vs raw `TypedResults`. In-process toolchain on purpose — the default per-benchmark executables trip Smart App Control. Results table lives in README "Performance"; re-run and refresh it after touching the mapping path |
 | `samples/Sample.Api` | `net10.0` | the reference end-to-end proof, and the only one with `PublishAot` |
 | `samples/Sample.{ErrorOr,OneOf,LanguageExt,Exceptions,Mediator,FluentResults,Wolverine,Controllers}.Api` | `net10.0` | the same API per style |
 | `samples/Sample.Shared.Errors` + `samples/Sample.Toolbox.Api` | `net10.0` | a shared catalog library and the API consuming it across the assembly boundary; also demos `ErrorMapping`, `ProducesError(typeof)`, `SuppressErrorApi`, `ToCreatedAtUri`, `errorapi_walk_depth` |
@@ -122,6 +124,14 @@ The generator does **not** reference `ErrorApi.Abstractions`. It matches attribu
   must not be able to tell which style an endpoint was written in.
 - **Adapters do not depend on each other.** Each pins exactly one result library. Shared behaviour goes in
   `ErrorApi.AspNetCore` or in the generated model, never in a second adapter.
+- **Tests that touch `ErrorApiRuntime.Metadata` join the `ambient-metadata` xunit collection.** The
+  static is process-wide and xunit runs test classes in parallel; a class outside the collection that
+  sets or asserts the ambient model will flake against the ones inside it.
+- **Documentation shaping never changes behaviour.** `ErrorCodeDescriptionEnabled(false)` and the
+  `FilterErrorCodes`/`HideErrorCodes` options wrap the model in `DocumentFilteredMetadata`, which
+  shapes `AllErrors`/`Endpoints`/`TryGetEndpointErrors` (what the transformer and TS writer read) and
+  passes `FindError`/`FindErrorForInstance` (what adapters answer through) straight through. Keep that
+  split when extending it.
 
 ## Testing
 

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='utf-8' />
+<title>ErrorApi.Benchmarks.MappingBenchmarks-20260830-160042</title>
+
+<style type="text/css">
+	table { border-collapse: collapse; display: block; width: 100%; overflow: auto; }
+	td, th { padding: 6px 13px; border: 1px solid #ddd; text-align: right; }
+	tr { background-color: #fff; border-top: 1px solid #ccc; }
+	tr:nth-child(even) { background: #f8f8f8; }
+</style>
+</head>
+<body>
+<pre><code>
+BenchmarkDotNet v0.15.4, Windows 11 (10.0.26200.9168)
+Intel Core i9-9900K CPU 3.60GHz (Coffee Lake), 1 CPU, 16 logical and 8 physical cores
+.NET SDK 11.0.100-preview.5.26302.115
+  [Host] : .NET 10.0.9 (10.0.9, 10.0.926.27113), X64 RyuJIT x86-64-v3
+</code></pre>
+<pre><code>Job=ShortRun  Toolchain=InProcessEmitToolchain  IterationCount=3  
+LaunchCount=1  WarmupCount=3  
+</code></pre>
+
+<table>
+<thead><tr><th>Method               </th><th>Mean</th><th>Error</th><th>StdDev</th><th>Ratio</th><th>RatioSD</th><th>Gen0</th><th>Allocated</th><th>Alloc Ratio</th>
+</tr>
+</thead><tbody><tr><td>Raw_TypedResults_Ok</td><td>4.501 ns</td><td>1.7208 ns</td><td>0.0943 ns</td><td>1.00</td><td>0.03</td><td>0.0029</td><td>24 B</td><td>1.00</td>
+</tr><tr><td>Raw_TypedResults_Problem</td><td>24.349 ns</td><td>4.9607 ns</td><td>0.2719 ns</td><td>5.41</td><td>0.11</td><td>0.0201</td><td>168 B</td><td>7.00</td>
+</tr><tr><td>Lookup_FindError</td><td>5.231 ns</td><td>0.2687 ns</td><td>0.0147 ns</td><td>1.16</td><td>0.02</td><td>-</td><td>-</td><td>0.00</td>
+</tr><tr><td>Lookup_FindError_miss</td><td>5.804 ns</td><td>0.2549 ns</td><td>0.0140 ns</td><td>1.29</td><td>0.02</td><td>-</td><td>-</td><td>0.00</td>
+</tr><tr><td>Lookup_FindErrorForInstance</td><td>2.514 ns</td><td>0.1267 ns</td><td>0.0069 ns</td><td>0.56</td><td>0.01</td><td>-</td><td>-</td><td>0.00</td>
+</tr><tr><td>Lookup_TryGetEndpointErrors</td><td>3.396 ns</td><td>0.2163 ns</td><td>0.0119 ns</td><td>0.75</td><td>0.01</td><td>-</td><td>-</td><td>0.00</td>
+</tr><tr><td>Core_Success</td><td>4.402 ns</td><td>1.1492 ns</td><td>0.0630 ns</td><td>0.98</td><td>0.02</td><td>0.0029</td><td>24 B</td><td>1.00</td>
+</tr><tr><td>Core_Failure</td><td>60.113 ns</td><td>18.1459 ns</td><td>0.9946 ns</td><td>13.36</td><td>0.31</td><td>0.0362</td><td>304 B</td><td>12.67</td>
+</tr><tr><td>ErrorOr_Success</td><td>4.550 ns</td><td>1.1178 ns</td><td>0.0613 ns</td><td>1.01</td><td>0.02</td><td>0.0029</td><td>24 B</td><td>1.00</td>
+</tr><tr><td>ErrorOr_Failure</td><td>70.203 ns</td><td>10.5797 ns</td><td>0.5799 ns</td><td>15.60</td><td>0.30</td><td>0.0362</td><td>304 B</td><td>12.67</td>
+</tr><tr><td>OneOf_Success</td><td>5.027 ns</td><td>1.6278 ns</td><td>0.0892 ns</td><td>1.12</td><td>0.03</td><td>0.0029</td><td>24 B</td><td>1.00</td>
+</tr><tr><td>OneOf_Failure</td><td>66.640 ns</td><td>15.9067 ns</td><td>0.8719 ns</td><td>14.81</td><td>0.32</td><td>0.0362</td><td>304 B</td><td>12.67</td>
+</tr><tr><td>LanguageExt_Success</td><td>5.903 ns</td><td>0.9953 ns</td><td>0.0546 ns</td><td>1.31</td><td>0.03</td><td>0.0029</td><td>24 B</td><td>1.00</td>
+</tr><tr><td>LanguageExt_Failure</td><td>76.062 ns</td><td>30.8601 ns</td><td>1.6915 ns</td><td>16.91</td><td>0.45</td><td>0.0362</td><td>304 B</td><td>12.67</td>
+</tr><tr><td>FluentResults_Success</td><td>5.487 ns</td><td>1.2518 ns</td><td>0.0686 ns</td><td>1.22</td><td>0.03</td><td>0.0029</td><td>24 B</td><td>1.00</td>
+</tr><tr><td>FluentResults_Failure</td><td>80.490 ns</td><td>35.1649 ns</td><td>1.9275 ns</td><td>17.89</td><td>0.49</td><td>0.0391</td><td>328 B</td><td>13.67</td>
+</tr><tr><td>Ardalis_Success</td><td>4.157 ns</td><td>0.2016 ns</td><td>0.0110 ns</td><td>0.92</td><td>0.02</td><td>0.0029</td><td>24 B</td><td>1.00</td>
+</tr><tr><td>Ardalis_Failure</td><td>73.884 ns</td><td>8.1253 ns</td><td>0.4454 ns</td><td>16.42</td><td>0.31</td><td>0.0362</td><td>304 B</td><td>12.67</td>
+</tr><tr><td>Cfe_Success</td><td>4.985 ns</td><td>4.0037 ns</td><td>0.2195 ns</td><td>1.11</td><td>0.05</td><td>0.0029</td><td>24 B</td><td>1.00</td>
+</tr><tr><td>Cfe_Failure</td><td>64.181 ns</td><td>14.8650 ns</td><td>0.8148 ns</td><td>14.26</td><td>0.30</td><td>0.0362</td><td>304 B</td><td>12.67</td>
+</tr></tbody></table>
+</body>
+</html>

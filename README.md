@@ -636,6 +636,22 @@ The host's own model answers first; the included ones fill in what it cannot kno
 API process. `x.IncludeFromAssemblies(typeof(SomeDomainType).Assembly)` is the reflection convenience
 of the same thing (startup-only; prefer `Include` under trimming or native AOT).
 
+The same options object shapes what the model **documents** — without changing what the API does:
+
+```csharp
+builder.Services.AddErrorApi(x => x
+    .ErrorCodeDescriptionEnabled(builder.Environment.IsDevelopment())  // prose off in production
+    .HideErrorCodes("Orders.LegacyReplay")                              // or a predicate:
+    .FilterErrorCodes(e => e.StatusCode < 500));
+```
+
+`ErrorCodeDescriptionEnabled(false)` strips the longer `Description` prose from the OpenAPI response
+tables and examples and from the TypeScript contract's comments — codes, statuses and titles stay,
+because they are the contract. The filters hide whole entries from the documented responses, the
+catalog listing and the TS contract. Both are **documentation decisions only**: a hidden code still
+resolves at runtime and endpoints answer exactly as before, so flipping them per environment can never
+change behaviour. Several filters compose; an entry must pass all of them.
+
 A referenced assembly that does **not** run the generator has nothing to export, and stays a boundary —
 `EAPI009` names it, `[ProducesError]` covers it. The library side has the same guard one boundary
 earlier: when a library's *own* walk stops at a dispatcher it cannot see past, `EAPI012` reports that
@@ -733,6 +749,38 @@ The honest framing: ErrorOr solves the return type, NSwag solves the client shap
 
 Nothing in the runtime path uses reflection: the catalog is `const` data, the endpoint lookup is a `switch` over string literals, the type lookup is a pattern switch, and `Result → IResult` is a branch. Every package is marked `IsAotCompatible`; the sample builds with `PublishAot` enabled so the trim and AOT analyzers run over it in CI, not just in the README.
 
+## Performance
+
+`benchmarks/ErrorApi.Benchmarks` measures the request-path cost — the generated lookups and the
+`→ IResult` mapping, base library and every adapter — against raw `TypedResults` as the floor:
+
+```bash
+dotnet run -c Release --project benchmarks/ErrorApi.Benchmarks
+```
+
+Measured on .NET 10.0.9, x64 (i9-9900K), BenchmarkDotNet 0.15.4, in-process short-run job:
+
+| Benchmark | Mean | Allocated |
+| --- | ---: | ---: |
+| `TypedResults.Ok(7)` *(the floor)* | 4.5 ns | 24 B |
+| `TypedResults.Problem(404, ...)` *(the floor)* | 24.3 ns | 168 B |
+| `FindError` (generated code switch) | 5.2 ns | 0 B |
+| `FindErrorForInstance` (generated type switch) | 2.5 ns | 0 B |
+| `TryGetEndpointErrors` (generated route switch) | 3.4 ns | 0 B |
+| `Result<T>` success → `ToHttpResult` | 4.4 ns | 24 B |
+| `Result<T>` failure → `ToHttpResult` | 60.1 ns | 304 B |
+| Adapter success paths (ErrorOr, OneOf, language-ext, FluentResults, Ardalis, CFE) | 4.2–5.9 ns | 24 B |
+| Adapter failure paths (catalog resolution + problem construction) | 64–81 ns | 304–328 B |
+
+What the numbers say: the **success path costs the same as writing `TypedResults.Ok` by hand** — the
+adapters add nothing measurable — the generated lookups are single-digit-nanosecond and
+allocation-free, and a failure costs ~60–80 ns end to end, of which 24 ns is ASP.NET's own
+`ProblemDetails` machinery. The first benchmark run also paid for itself twice: it caught
+FluentResults' `IsFailed`/`Errors` running an allocating LINQ `OfType` per call (the adapter now scans
+`Reasons` directly — its success path went from 52 ns / 120 B to 5.5 ns / 24 B), and it flagged
+`ToProblem` building a temporary extensions dictionary that ASP.NET then copied (it now writes into
+the `ProblemDetails` it constructs — the failure path halved, 130 → 60 ns and 576 → 304 B).
+
 ---
 
 ## Repository layout
@@ -749,6 +797,7 @@ tests/ErrorApi.TestKit      the generator harness, the snapshot assertion, a han
 tests/…Generator.Tests      core tests — no result library referenced, so they pass on the core alone
 tests/ErrorApi.*.Tests      one suite per adapter, each pinning its own library version
 tests/…Integration.Tests    three samples running under WebApplicationFactory: live documents, live problems
+benchmarks/ErrorApi.Benchmarks  request-path cost, base library and every adapter, vs raw TypedResults
 samples/Sample.Api          the reference API: route groups, interface dispatch, [ProducesError], AOT
 samples/Sample.ErrorOr.Api  the same API in ErrorOr, with codes read out of the factory calls
 samples/Sample.OneOf.Api    the same API as a union, with the failure cases carrying [Error]
