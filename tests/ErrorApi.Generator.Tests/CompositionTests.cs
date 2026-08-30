@@ -9,6 +9,7 @@ namespace ErrorApi.Generator.Tests;
 /// own first. The point is the instance-type switch — a failure whose type is declared in Domain can
 /// only be resolved by Domain's generated switch, and composition is what puts it in reach.
 /// </summary>
+[Collection("ambient-metadata")]
 public sealed class CompositionTests
 {
     private sealed record DomainFailure;

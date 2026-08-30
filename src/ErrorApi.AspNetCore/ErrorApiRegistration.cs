@@ -37,7 +37,8 @@ public static class ErrorApiRegistration
 
     /// <summary>
     /// The configurable form: the host assembly's model first, then whatever the options include —
-    /// composed into one <see cref="CompositeErrorApiMetadata"/> where the first answer wins.
+    /// composed into one <see cref="CompositeErrorApiMetadata"/> where the first answer wins — and
+    /// shaped for documentation when the options say so (descriptions off, codes filtered).
     /// </summary>
     public static IServiceCollection Register(IServiceCollection services, IErrorApiMetadata metadata, Action<ErrorApiOptions> configure)
     {
@@ -47,14 +48,19 @@ public static class ErrorApiRegistration
         var options = new ErrorApiOptions();
         configure(options);
 
-        if (options.Included.Count == 0)
+        var model = metadata;
+        if (options.Included.Count > 0)
         {
-            return Register(services, metadata);
+            var models = new List<IErrorApiMetadata>(options.Included.Count + 1) { metadata };
+            models.AddRange(options.Included);
+            model = new CompositeErrorApiMetadata(models);
         }
 
-        var models = new List<IErrorApiMetadata>(options.Included.Count + 1) { metadata };
-        models.AddRange(options.Included);
+        if (options.Visibility is not null || !options.DescriptionsEnabled)
+        {
+            model = new DocumentFilteredMetadata(model, options.Visibility, options.DescriptionsEnabled);
+        }
 
-        return Register(services, new CompositeErrorApiMetadata(models));
+        return Register(services, model);
     }
 }

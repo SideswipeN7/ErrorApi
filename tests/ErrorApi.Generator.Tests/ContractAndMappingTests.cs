@@ -156,6 +156,7 @@ public sealed class CreatedMappingTests
 /// <see cref="ErrorApiRuntime.Use"/>: the test-friendly way to hold the ambient model — swap in, get
 /// the previous one back on dispose, even when scopes nest.
 /// </summary>
+[Collection("ambient-metadata")]
 public sealed class RuntimeScopeTests
 {
     [Fact]
