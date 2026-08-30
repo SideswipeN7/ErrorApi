@@ -18,7 +18,7 @@ that introduces reflection on the request path, is going the wrong way.
 
 ```bash
 dotnet build ErrorApi.slnx                       # must be warning-free
-dotnet test ErrorApi.slnx                        # 303 tests across nine suites
+dotnet test ErrorApi.slnx                        # 307 tests across ten suites
 dotnet run -c Release --project benchmarks/ErrorApi.Benchmarks   # request-path cost, in-process (SAC-safe)
 dotnet test ErrorApi.slnx --collect:"XPlat Code Coverage"        # per-suite cobertura XML (coverlet)
 ERRORAPI_ACCEPT_SNAPSHOTS=1 dotnet test ErrorApi.slnx   # re-approve snapshots, then read the diff
@@ -40,10 +40,12 @@ over it during a normal build; an IL2026/IL3050 warning there is a real regressi
 
 | Project | TFM | Holds |
 | --- | --- | --- |
-| `src/ErrorApi.Abstractions` | `netstandard2.0;net10.0` | `Error`, `Result`/`Result<T>`, `[Error]`, `[ProducesError]`, `ErrorDescriptor`, `IErrorApiMetadata`, `RoutePattern`, `ErrorApiRuntime` |
+| `src/ErrorApi.Abstractions` | `netstandard2.0;net8.0;net10.0` | `Error`, `Result`/`Result<T>`, `[Error]`, `[ProducesError]`, `ErrorDescriptor`, `IErrorApiMetadata`, `RoutePattern`, `ErrorApiRuntime` |
 | `src/ErrorApi.Generator` | `netstandard2.0` | the generator: parsing, the call-graph walk, the emitters |
-| `src/ErrorApi.AspNetCore` | `net10.0` | `ToHttpResult()`, the OpenAPI operation transformer, the TypeScript writer, `AddErrorApi()`'s target |
-| `src/ErrorApi.{ErrorOr,OneOf,LanguageExt,FluentResults,ArdalisResult,CSharpFunctionalExtensions}` + `src/ErrorApi.LanguageExt.V5` (prerelease) | `net10.0` | one adapter each, pinning that library's version |
+| `src/ErrorApi.AspNetCore` | `net8.0;net9.0;net10.0` | `ToHttpResult()`, the OpenAPI transformer (**net10 only** — it writes Microsoft.OpenApi 2.x; net8/net9 documents come from ErrorApi.Swashbuckle), the TypeScript writer, `AddErrorApi()`'s target |
+| `src/ErrorApi.{ErrorOr,OneOf,LanguageExt,FluentResults,ArdalisResult,CSharpFunctionalExtensions}` | `net8.0;net9.0;net10.0` | one adapter each, pinning that library's version |
+| `src/ErrorApi.LanguageExt.V5` (prerelease) | `net10.0` | the v5-beta adapter — its LanguageExt.Core beta only ships net10 |
+| `src/ErrorApi.Swashbuckle` | `net8.0;net9.0;net10.0` | the Swagger road: an `IOperationFilter` compiling the same shared `ErrorResponseBuilder` as the transformer, so the two document pipelines cannot drift. `AddSwaggerGen(c => c.AddErrorApiResponses())` |
 | `tests/ErrorApi.TestKit` | `net10.0` | the generator harness, the snapshot assertion, `FakeMetadata` |
 | `tests/ErrorApi.Generator.Tests` | `net10.0` | core snapshot and behaviour tests; references no result library |
 | `tests/ErrorApi.{ErrorOr,OneOf,LanguageExt,LanguageExt.V5,FluentResults,ArdalisResult,CSharpFunctionalExtensions}.Tests` | `net10.0` | one suite per adapter, version overridable |
@@ -139,6 +141,16 @@ The generator does **not** reference `ErrorApi.Abstractions`. It matches attribu
   needs no package, so `ErrorApiExceptionHandler` lives in `ErrorApi.AspNetCore`. It writes the response
   through `Error.ToProblem()`, the same call the result path makes, and that is not an accident: a client
   must not be able to tell which style an endpoint was written in.
+- **All configuration extends the one AddErrorApi lambda.** New knobs go on `ErrorApiOptions` (or as
+  an extension method on it defined in the adapter that owns the knob, like
+  `IncludeAllFluentResultErrors`), never as a second registration call or a bare static the user must
+  discover. `AddErrorApi()` alone must always remain the whole minimal setup.
+- **The response builder is one linked source.** `src/Shared/ErrorResponseBuilder.cs` compiles into
+  the net10 transformer and the Swashbuckle filter; changing the response shape in one place changes
+  both, and that is the point.
+- **README is the shop window; the depth lives in `docs/*.md` and `specs/*/spec.md`.** New features
+  get: a line in the README only if they change the first-steps story, their real documentation in
+  the matching docs page, and a requirement (with its acceptance evidence) in the matching spec.
 - **Adapters do not depend on each other.** Each pins exactly one result library. Shared behaviour goes in
   `ErrorApi.AspNetCore` or in the generated model, never in a second adapter.
 - **Tests that touch `ErrorApiRuntime.Metadata` join the `ambient-metadata` xunit collection.** The

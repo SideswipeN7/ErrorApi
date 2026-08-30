@@ -4,15 +4,7 @@
 
 Result libraries fixed the return type. They did not fix the contract: `ErrorOr`, `FluentResults` and friends map a failure to `ProblemDetails` at runtime, so the OpenAPI document still says `200 OK` and nothing else. The frontend has no idea a `409 Orders.AlreadyPaid` exists until it happens in production.
 
-ErrorApi resolves that at compile time — and it does so whether you use its own `Result<T>`, ErrorOr, OneOf, language-ext, a hand-rolled discriminated union, or no result type at all: [plain exceptions work too](#no-result-type-plain-exceptions-work).
-
-```csharp
-[Error("Orders.AlreadyPaid", 409, Title = "Order already paid",
-    Detail = "Order {0} was already paid and cannot be paid again.")]
-public static partial Error AlreadyPaid(Guid orderId);
-```
-
-Nobody wrote `.Produces(409)`. The generator followed the handler into `IOrderService`, into its implementation, and into the private helper the implementation calls.
+ErrorApi resolves that at compile time — and it does so whether you use its own `Result<T>`, ErrorOr, OneOf, language-ext, a hand-rolled discriminated union, or no result type at all: plain exceptions work too.
 
 ## What it looks like
 
@@ -20,955 +12,115 @@ Swagger UI, `POST /orders/{id}/pay` — five responses, each carrying its own co
 
 ![Swagger UI showing the pay endpoint with 200, 404, 409, 410 and 422 responses, each listing its error codes and example problem documents](https://raw.githubusercontent.com/SideswipeN7/ErrorApi/main/docs/images/swagger-pay-endpoint.png)
 
-The same document in Scalar — every endpoint's failures visible without expanding anything.
-
 ![Scalar API reference listing all five endpoints, each with its error responses](https://raw.githubusercontent.com/SideswipeN7/ErrorApi/main/docs/images/scalar-overview.png)
-
-Reproduce both with:
 
 ```bash
 dotnet run --project samples/Sample.Api
 ```
 
-`http://localhost:5080/swagger` · `http://localhost:5080/scalar` · `http://localhost:5080/openapi/v1.json` · `http://localhost:5080/openapi/errors.ts`
+`http://localhost:5080/swagger` · `/scalar` · `/openapi/v1.json` · `/openapi/errors.ts` — and the same
+API is built once per declaration style under [`samples/`](samples), each with its own README, all
+producing the identical contract.
 
-The same API is built again and again — once per declaration style and endpoint surface — so the
-difference is only ever the style, and the documents they produce are identical:
+## First steps
 
-```bash
-dotnet run --project samples/Sample.ErrorOr.Api      # :5081
-```
-
-```bash
-dotnet run --project samples/Sample.OneOf.Api        # :5082
-```
-
-```bash
-dotnet run --project samples/Sample.LanguageExt.Api  # :5083
-```
-
-```bash
-dotnet run --project samples/Sample.Exceptions.Api   # :5084, no result type at all
-```
-
-```bash
-dotnet run --project samples/Sample.Mediator.Api     # :5085, endpoints behind MediatR
-```
-
-```bash
-dotnet run --project samples/Sample.FluentResults.Api  # :5086
-```
-
-```bash
-dotnet run --project samples/Sample.Wolverine.Api    # :5088, convention handlers, no interfaces
-```
-
-```bash
-dotnet run --project samples/Sample.Controllers.Api  # :5089, old-fashioned [ApiController] classes
-```
-
-```bash
-dotnet run --project samples/Sample.Toolbox.Api      # :5090, the toolbox: a shared catalog consumed cross-assembly
-```
-
-```bash
-dotnet run --project samples/Sample.Ardalis.Api      # :5091, Ardalis.Result with a factory catalog
-```
-
-```bash
-dotnet run --project samples/Sample.Cfe.Api          # :5092, CSharpFunctionalExtensions Result<T, E>
-```
-
-One more runs the same pipeline through MediatR with a FluentValidation behaviour — and documents the
-behaviour's 400 on every endpoint with no attribute anywhere. See
-[pipeline behaviours are followed too](#pipeline-behaviours-are-followed-too).
-
-```bash
-dotnet run --project samples/Sample.Mediator.Validation.Api  # :5087
-```
-
----
-
-## Quickstart
-
-**1. Declare the catalog.** Partial members; the generator writes the bodies.
+**1. Declare the catalog** — the class declares membership and the default status, the members declare
+the names; nothing else needs typing:
 
 ```csharp
-using ErrorApi;
-
-[ErrorCatalog("Orders")]
+[ErrorCatalog("Orders", StatusCodes.Status404NotFound)]
 public static partial class OrderErrors
 {
-    [Error(StatusCodes.Status404NotFound, Title = "Order not found")]
-    public static partial Error NotFound { get; }
+    public static partial Error NotFound { get; }                              // Orders.NotFound, 404
 
     [Error(StatusCodes.Status409Conflict, Detail = "Order {0} was already paid.")]
-    public static partial Error AlreadyPaid(Guid orderId);
+    public static partial Error AlreadyPaid(Guid orderId);                     // Orders.AlreadyPaid, 409
 }
 ```
 
-The attribute carries the status and nothing else it does not have to: `NotFound` becomes the code
-`Orders.NotFound` and the title `Not found`. [Codes you do not have to type](#codes-you-do-not-have-to-type)
-has the rules.
-
-**2. Return them.** Nothing special — `Error` converts implicitly into `Result<T>`.
+**2. Return the entries** — `Error` converts implicitly into `Result<T>`:
 
 ```csharp
 public Result<Order> GetById(Guid id) =>
     _orders.TryGetValue(id, out var order) ? order : OrderErrors.NotFound;
 ```
 
-**3. Wire it up once.**
+**3. Wire it up once** — `AddErrorApi()` is the whole minimal setup, and every knob is a lambda on it:
 
 ```csharp
 builder.Services.AddOpenApi();
-builder.Services.AddErrorApi();   // generated overload — no reflection behind it
+builder.Services.AddErrorApi();          // or AddErrorApi(x => x.AddExceptionHandler().Include(...))
 
 app.MapGet("/orders/{id:guid}", (Guid id, IOrderService s) => s.GetById(id).ToHttpResult());
 ```
 
-That is the whole integration. `AddErrorApi()` registers this assembly's compile-time model and hooks an `IOpenApiOperationTransformer` into every document.
-
-**Prefer `TypedResults`?** Every mapping has a typed twin that answers with `Results<…, ProblemHttpResult>`, so ASP.NET documents the success schema straight from the endpoint signature — no transformer involved on the success half:
-
-```csharp
-// GET /orders/{id} → 200 (with the Order schema) + the generator's 404
-app.MapGet("/orders/{id:guid}", Results<Ok<Order>, ProblemHttpResult> (Guid id, IOrderService s) =>
-    s.GetById(id).ToTypedResult());
-```
-
-| `IResult` form | typed twin | success arm |
-| --- | --- | --- |
-| `ToHttpResult()` on `Result<T>` | `ToTypedResult()` | `Ok<T>` |
-| `ToHttpResult()` on `Result` | `ToTypedResult()` | `NoContent` |
-| `ToCreated(...)` | `ToTypedCreated(...)` | `Created<T>` |
-| `ToCreatedAtRoute(...)` | `ToTypedCreatedAtRoute(...)` | `CreatedAtRoute<T>` |
-
-The failure arm is always `ProblemHttpResult`, which carries no static status — that is exactly the hole the generated per-endpoint contract fills, so the error half of the document is identical in both styles.
-
-**Or skip the mapping call entirely.** C# forbids user-defined conversions to an interface, so a
-result can never implicitly become an `IResult` — but an endpoint filter gets the same ergonomics:
-
-```csharp
-var orders = app.MapGroup("/orders").AddErrorApiResults();
-
-orders.MapGet("/{id:guid}", async (Guid id, ISender sender) =>
-    await sender.Send(new GetOrder(id)));       // Result<Order>, returned as-is
-```
-
-`AddErrorApiResults()` maps a returned `Result`/`Result<T>` exactly as `ToHttpResult()` would
-(success → 200/204, failure → the problem shape with the code) and rewrites the endpoint's 200
-metadata so the document describes `T`, never the wrapper. The success value serializes from its
-runtime type, which is the one part of ErrorApi native AOT cannot see through — under trimming or
-AOT, prefer the explicit mapping calls.
-
-**Flowing over a result.** `Match` folds to a value; its action-shaped relatives close or thread a
-flow — `Switch` runs exactly one branch, `OnSuccess`/`OnFailure` run a side effect and hand the same
-result back, so they slot into the middle of a chain (all with `Task`/`ValueTask` twins):
-
-```csharp
-service.Pay(id).Switch(order => _log.Paid(order), error => _alerts.Raise(error));
-
-return (await service.PayAsync(id)
-    .OnSuccess(order => _log.Paid(order))
-    .OnFailure(error => _metrics.Bump(error.Code)))
-    .ToHttpResult();
-```
-
-**Old-fashioned controllers work too.** An attribute-routed action is a handler like any other: the
-generator finds the class by its `ControllerBase` ancestry (or `[ApiController]`), reads the route from
-the attributes — `[controller]`/`[action]` tokens, constraints, rooted templates and all — and walks
-the action method the same way it walks a lambda:
-
-```csharp
-[ApiController]
-[Route("orders")]
-public sealed class OrdersController(IOrderStore store) : ControllerBase
-{
-    [HttpGet("{id:guid}")]
-    public ActionResult<Order> GetById(Guid id) => store.Find(id).ToActionResult();   // documents 404
-
-    [HttpPost("{id:guid}/pay")]
-    public IResult Pay(Guid id, decimal amount) => store.Pay(id, amount).ToHttpResult();   // MVC executes IResult too
-}
-```
-
-`ToActionResult()`/`ToCreatedActionResult(...)` speak MVC's own vocabulary and produce the identical
-problem body, so mixing controllers and Minimal APIs in one application yields one consistent document.
-Inheritance follows MVC's rules: actions on a shared base controller are scanned for every derived
-controller, a `[Route]` on the base applies when the derived class declares none, and an override
-without its own verb attribute inherits the overridden method's. Conventional (non-attribute) routing
-has no compile-time template to read and stays out of scope.
-
----
-
-## No result type? Plain exceptions work
-
-A failure identified by a type is a shape the catalog already understands, and an exception class is
-exactly that. Annotate it, throw it as you always have, and the endpoints that can reach it get
-documented:
-
-```csharp
-[ErrorCatalog("Orders")]
-public static class OrderErrors
-{
-    [Error(404, Description = "No order exists for the supplied identifier.")]
-    public sealed class NotFoundException(Guid id) : Exception($"No order {id}.");
-}
-
-public Order GetById(Guid id) =>
-    _orders.TryGetValue(id, out var order) ? order : throw new OrderErrors.NotFoundException(id);
-```
-
-The trailing `Exception` is dropped from the inferred code — a client does not care how the server
-models the failure — so this is `Orders.NotFound`, the same code the `Result<T>` sample produces.
-
-For the response, register the handler. It is deliberately not part of `AddErrorApi()`: taking over an
-application's exception handling is not something a call by that name should do behind your back.
-
-```csharp
-builder.Services.AddErrorApi();
-builder.Services.AddErrorApiExceptionHandler(o => o.UseExceptionMessageAsDetail = true);
-
-var app = builder.Build();
-app.UseExceptionHandler();
-```
-
-```json
-{ "title": "Not found", "status": 404, "detail": "No order 1111….", "code": "Orders.NotFound" }
-```
-
-The body comes from the same `Error.ToProblem()` the result path uses, so a client cannot tell which
-style the server was written in. An exception the catalog does not know is left untouched, so whatever
-handled it before still does. `Exception.Message` stays off the wire unless you opt in with
-`AddErrorApiExceptionHandler(o => o.UseExceptionMessageAsDetail = true)` — messages are written for
-operators, and the entry's `Detail` is the documented place for client-facing text.
-
----
-
-## Failures from a package you do not own
-
-`[Error]` has to sit on the declaration, which rules out anything shipped in a NuGet package. A
-mapping says the same thing from the outside — the type is still the identity, the attribute supplies
-the wire code and the status it has no way to carry:
-
-```csharp
-[assembly: ErrorMapping(typeof(StripeCardError), "Payments.CardDeclined", 402, Title = "Card declined")]
-[assembly: ErrorMapping(typeof(GatewayTimeoutException), 504)]   // code inferred: "GatewayTimeout"
-```
-
-The entry lands in the catalog, the TypeScript contract and the generated type switch like any other,
-so `TryGetCatalogError` and the exception handler resolve it at runtime with no special case.
-
-Attaching it to an endpoint is a separate question, and worth being precise about. Where **your** code
-constructs the type, the walk finds it with no help. Where the **library** raises it on its own there
-is nothing in your source to follow, so name it on the endpoints that surface it:
-
-```csharp
-payments.MapPost("/", [ProducesError("Payments.GatewayTimeout")] (IPaymentService s) => s.Charge().ToHttpResult());
-```
-
-Or by type, which reads as what it is and survives a rename of the code:
-
-```csharp
-payments.MapPost("/", [ProducesError(typeof(GatewayTimeoutException))] (IPaymentService s) => s.Charge().ToHttpResult());
-```
-
-That is the trade the mapping buys: the code is defined once instead of per endpoint, and `EAPI005`
-stops firing because it is now a real catalog entry.
-
----
-
-## Codes you do not have to type
-
-`[Error(404)]` is enough. The wire code is resolved in this order:
-
-1. the explicit argument, `[Error("Orders.NotFound", 404)]`;
-2. a `code:` string literal in the member's own body — which is where ErrorOr and most factory-style
-   error APIs already put it;
-3. the declaration's name, prefixed by its catalog.
-
-The prefix comes from `[ErrorCatalog("Orders")]` on the type or on the assembly. Without one, a member
-takes its containing type's name with a trailing `Errors` removed — `OrderErrors.NotFound` yields
-`Order.NotFound` — and an annotated type takes its own name unchanged.
-
-The title defaults to the name read as a sentence: `AlreadyPaid` becomes `Already paid`. Set `Title`
-when a better one exists, which for a catalog member it usually does.
-
-Rule 2 is what collapses an ErrorOr catalog to a single attribute argument, and it removes a drift risk
-along the way: the documented code and the code on the wire come from the same literal. Write the code
-twice and let the two disagree, and `EAPI008` says so.
-
-```csharp
-public static class OrderErrors
-{
-    [ErrorApi.Error(404)]  // -> "Orders.NotFound", read out of the line below
-    public static Error NotFound => Error.NotFound("Orders.NotFound", "No such order.");
-}
-```
-
-**The status doesn't have to be typed either.** A bare `[Error]` resolves its status in this order —
-the most specific declaration always wins:
-
-1. `[ErrorStatusCode(400)]` on the member — beats everything, including an explicit `[Error(404)]`;
-2. the `[Error(404)]` argument itself;
-3. the catalog's default: `[ErrorCatalog("Order.Validation", 422)]` gives every entry inside a status,
-   so a catalog of same-status failures reads as one line per entry;
-4. for an annotated **type**, an integer literal in its base constructor call — the shape of a library
-   that already carries the status.
-
-Rule 4 is what makes onboarding an existing result library nearly free. A language-ext catalog is
-already written; `[Error]` just points at it:
-
-```csharp
-[ErrorCatalog("Orders")]
-public static class OrderErrors
-{
-    [Error]   // -> "Orders.NotFound", 404, title "Order not found" — all read from the line below
-    public sealed record NotFound(Guid Id) : Expected("Order not found", 404);
-}
-```
-
-And the fast-catalog shape for a validation family — inside an `[ErrorCatalog]` type, a
-`static partial Error` member **is** an entry, no `[Error]` needed at all; the class declares
-membership, the members declare names:
-
-```csharp
-[ErrorCatalog("Order.Validation", 422)]
-public static partial class ValidationErrors
-{
-    public static partial Error InvalidOrder { get; }                     // Order.Validation.InvalidOrder, 422
-    public static partial Error MissingCustomer { get; }                  // Order.Validation.MissingCustomer, 422
-
-    [ErrorStatusCode(400)]
-    public static partial Error MalformedId { get; }                      // 400
-
-    [ErrorDescription("The total must be positive.")]
-    public static partial Error InvalidTotal { get; }                     // 422, with docs prose
-}
-```
-
-A member that is not `partial` — a helper with its own body — is never claimed implicitly, and a
-partial member you implement yourself stays your own; `[Error]` remains the explicit opt-in for both.
-
-`[ErrorDescription]` is the documentation prose as its own attribute, so an entry that inherits
-everything else still carries one line of docs; it overrides `[Error(Description = ...)]` the same way
-`[ErrorStatusCode]` overrides the status.
-
-A symbol from a referenced assembly has no body to read, so rule 2 for codes — and rule 4 for statuses —
-cannot be re-applied by a consumer. The generator therefore bakes every source-inferred resolution into
-the declaring assembly as `[assembly: CatalogExport(...)]` (code alone, or code + status + title) and
-reads it back through the reference. The declaring assembly's resolution is authoritative everywhere;
-nothing drifts, and nothing needs to be spelled twice.
-
-### Which attribute, when
-
-| You want | Write |
-| --- | --- |
-| The classic entry | `[Error(404)]` on a `static partial Error` member of an `[ErrorCatalog("Orders")]` class |
-| An explicit wire code | `[Error("Orders.NotFound", 404)]` |
-| A same-status family, one line per entry | `[ErrorCatalog("Order.Validation", 422)]` on the class — bare `static partial Error` members inside need **no attribute at all** |
-| To adopt a library type that already carries the data | bare `[Error]` on the type — status and title read from the base constructor (`: Expected("msg", 404)`) |
-| To override one entry | `[ErrorStatusCode(400)]` and/or `[ErrorDescription("…")]` — beats everything less specific (`EAPI013` tells you when the beaten declaration went stale) |
-| A failure behind something the walk cannot cross | `[ProducesError("Orders.NotFound")]` or `[ProducesError(typeof(TimeoutException))]` — on the endpoint, the handler, or the message type |
-| A catalog entry for a type nobody can annotate | `[assembly: ErrorMapping(typeof(TimeoutException), "Gateway.Timeout", 504)]` |
-| To silence one diagnostic on one declaration | `[SuppressErrorApi("EAPI010")]` |
-
-`CatalogExport`/`ReachabilityExport` are emitted by the generator, never written by hand.
-
----
-
-## Bring your own Result type
-
-`[Error]` has two modes, and the second is what makes the adapter packages possible.
-
-| On | Mode | The generator |
-| --- | --- | --- |
-| `static partial Error` member | **generated** | writes the implementation, the `Codes` constants and the descriptor |
-| a type, a field, or a member you implement yourself | **declarative** | writes nothing; records the entry and learns to recognise it in the call graph |
-
-Declarative mode means the catalog can be expressed in someone else's error type. Everything downstream — discovery, OpenAPI, the TypeScript contract, the diagnostics — is unchanged.
-
-### `ErrorApi.ErrorOr`
-
-The code is the anchor: annotate the members that produce ErrorOr errors, and the runtime mapping looks the code back up in the catalog, so the status a client receives is the one the document promised.
-
-```csharp
-public static class OrderErrors
-{
-    [ErrorApi.Error("Orders.NotFound", 404, Title = "Order not found")]
-    public static Error NotFound => Error.NotFound("Orders.NotFound", "No such order.");
-}
-
-orders.MapGet("/{id:guid}", (Guid id, IOrderService s) => s.GetById(id).ToHttpResult());
-```
-
-A code the catalog has never seen still maps sensibly: `ErrorType` supplies the status (`NotFound` → 404, `Conflict` → 409, `Validation` → 400 …), and a custom numeric type that already looks like an HTTP status is honoured.
-
-### `ErrorApi.OneOf` — and any discriminated union
-
-With a union the failure *is* a type, so that is where the entry goes. The generator documents the endpoint wherever it sees the case constructed.
-
-```csharp
-[Error("Orders.NotFound", 404, Title = "Order not found")]
-public sealed record OrderNotFound(Guid Id);
-
-public OneOf<Order, OrderNotFound, OrderAlreadyPaid> Pay(Guid id) => new OrderNotFound(id);
-
-orders.MapPost("/{id:guid}/pay", (Guid id, IOrderService s) => s.Pay(id).ToHttpResult());
-```
-
-The first type argument is the success value; every later one is a failure. For a hand-rolled union with no library at all, `OneOfHttpExtensions.Problem(failure)` is the failure branch:
-
-```csharp
-return outcome switch
-{
-    Order order => TypedResults.Ok(order),
-    var failure => OneOfHttpExtensions.Problem(failure),
-};
-```
-
-### `ErrorApi.FluentResults`
-
-`Result.Fail("order not found")` carries a message and nothing else — no code, no status, nothing a
-document could promise. Model each failure as its own `Error` subclass, which is what FluentResults
-recommends anyway, and the type becomes the identity:
-
-```csharp
-using FluentError = FluentResults.Error;
-
-[ErrorApi.ErrorCatalog("Orders")]
-public static class OrderErrors
-{
-    [ErrorApi.Error(404)]
-    public sealed class NotFound(Guid id) : FluentError($"No order {id}.");
-}
-
-public Result<Order> GetById(Guid id) =>
-    _orders.TryGetValue(id, out var order) ? Result.Ok(order) : Result.Fail(new OrderErrors.NotFound(id));
-
-orders.MapGet("/{id:guid}", (Guid id, IOrderService s) => s.GetById(id).ToHttpResult());
-```
-
-A result carrying several errors answers with the first one — that is what keeps the response matching
-the document. `.WithMetadata("code", …)` is the second way in, for failures you do not want a type for.
-A bare `Result.Fail("message")` becomes a 500 carrying the message, which is deliberately unhelpful as
-a contract, because a message is not one.
-
-> **Naming note.** FluentResults and ErrorApi both export `Result`, so a file cannot import both
-> namespaces. Let FluentResults keep the plain name and spell ours out as `[ErrorApi.Error(...)]`.
-
-### `ErrorApi.LanguageExt`
-
-Your `Expected` subclasses already carry a message and a status, so a bare `[Error]` is the whole
-onboarding — the status and title are read from the base constructor call, the wire code from the name:
-
-```csharp
-[ErrorCatalog("Orders")]
-public static class OrderErrors
-{
-    [Error]   // -> "Orders.NotFound", 404, "Order not found" — nothing written twice
-    public sealed record NotFound(Guid Id) : Expected("Order not found", 404);
-}
-
-public Fin<Order> GetById(Guid id) => new OrderErrors.NotFound(id);
-
-orders.MapGet("/{id:guid}", (Guid id, IOrderService s) => s.GetById(id).ToHttpResult());
-```
-
-Resolution goes by type first, through a generated pattern switch. Failing that the numeric code is used when it already looks like an HTTP status; everything else becomes a 500.
-
-> **Naming note.** ErrorOr and language-ext both ship a type called `Error`. When both namespaces are imported, spell ours out as `[ErrorApi.Error(...)]` or add `using ErrorAttribute = ErrorApi.ErrorAttribute;`.
-
-### `ErrorApi.ArdalisResult`
-
-Ardalis.Result has no typed error and no code slot at all — a failure is a `ResultStatus` plus message
-strings. The identity therefore lives in a catalog of factory members, with the code carried where
-Ardalis has room for it: an error message, or `ValidationError.ErrorCode`.
-
-```csharp
-[ErrorCatalog("Orders")]
-public static class OrderErrors
-{
-    [ErrorApi.Error("Orders.NotFound", 404, Title = "Order not found")]
-    public static Result NotFound() => Result.NotFound("Orders.NotFound");
-}
-
-public Result<Order> GetById(Guid id) =>
-    _orders.TryGetValue(id, out var order) ? order : OrderErrors.NotFound();
-
-orders.MapGet("/{id:guid}", (Guid id, IOrderService s) => s.GetById(id).ToHttpResult());
-```
-
-Resolution: a `ValidationError.ErrorCode` the catalog knows, then an error message that is a known
-code, then the `ResultStatus` alone — status mapped the way `Ardalis.Result.AspNetCore` maps it
-(`Invalid` 400, `Error` 422), the status's name as the code. That last rung is deliberately weak: a
-failure without a catalog identity cannot be promised in a document, and the adapter README says so.
-
-### `ErrorApi.CSharpFunctionalExtensions`
-
-`Result<T, E>` is the sweet spot: the failure already **is** a type of your own, so that is where the
-catalog entry goes — annotate `E` (or its concrete cases) and the generated pattern switch resolves the
-instance at runtime.
-
-```csharp
-public abstract record OrderError;
-
-[ErrorApi.Error("Orders.NotFound", 404, Title = "Order not found")]
-public sealed record OrderNotFound(Guid Id) : OrderError;
-
-public Result<Order, OrderError> GetById(Guid id) =>
-    _orders.TryGetValue(id, out var order) ? order : new OrderNotFound(id);
-
-orders.MapGet("/{id:guid}", (Guid id, IOrderService s) => s.GetById(id).ToHttpResult());
-```
-
-`UnitResult<E>` maps to 204/problem. A string-error `Result<T>` resolves only when the string is a
-known catalog code; anything else is a 500 carrying the message, because a message is not a contract.
-
-### How an adapter reaches the catalog
-
-Adapters never reflect. The generator emits a pattern switch over the annotated types and a switch over the codes:
-
-```csharp
-public ErrorDescriptor? FindErrorForInstance(object? instance) => instance switch
-{
-    global::Shop.OrderAlreadyPaid => _errors[0],
-    global::Shop.OrderNotFound    => _errors[1],
-    _ => null,
-};
-```
-
-`AddErrorApi()` publishes the model on `ErrorApiRuntime.Metadata`, which is what lets `result.ToHttpResult()` work as a plain extension method with no service provider in scope. Every adapter also has an overload taking `IErrorApiMetadata` explicitly, and tests that stand up hosts one after another can hold the static in a scope: `using (ErrorApiRuntime.Use(metadata)) { … }` restores the previous model on dispose. The model stays one per process — parallel hosts should pass metadata explicitly.
-
----
-
-## What the generator emits
-
-| File | Contents |
-| --- | --- |
-| `<Catalog>.Catalog.g.cs` | The implementing half of every generated `[Error]` member, plus a `Codes` class of `const string` values you can use in `switch` patterns. |
-| `ErrorApi.Metadata.g.cs` | The descriptor table, the endpoint→errors map, and the type→entry switch, all as `switch` statements over constants. No dictionary is built at startup, no type is scanned. |
-| `ErrorApi.Registration.g.cs` | The zero-argument `AddErrorApi()` overload. Only emitted when the project references `ErrorApi.AspNetCore`, so a class library that holds only the catalog still builds. |
-
-Read the real output for the sample app under `samples/Sample.Api/obj/generated/` after a build, or the approved snapshots in `tests/ErrorApi.Generator.Tests/Snapshots/`.
-
----
-
-## How the errors are discovered
-
-For each `MapGet`/`MapPost`/`MapPut`/`MapDelete`/`MapPatch`/`MapMethods`/`Map` call site the generator:
-
-1. reads the route template — including any `MapGroup` prefixes, followed back through the local the group was assigned to and through intermediate calls like `.WithTags(...)`;
-2. resolves the handler, whether it is a lambda or a method group;
-3. walks the handler body, following every call into source — including **through interface and virtual dispatch**, by resolving the implementations present in the compilation — and records every `[Error]` member it reads and every `[Error]` type it sees constructed;
-4. follows a message past a dispatcher it cannot read — see below.
-
-Step 3 is what a runtime mapper cannot do. Endpoints normally talk to an `IOrderService`; the errors live two or three layers down.
-
-### Two versions of one route
-
-Endpoint identity is route + method + **API description group**, so a header-versioned API that splits
-its documents by group keeps a separate contract per version:
-
-```csharp
-app.MapGet("/orders/{id:guid}", V1Handler).WithGroupName("v1");   // documents 410 Orders.Retired
-app.MapGet("/orders/{id:guid}", V2Handler).WithGroupName("v2");   // documents 404 Orders.NotFound
-```
-
-The group comes from `WithGroupName(...)` on the endpoint or its `MapGroup` chain, or
-`[ApiExplorerSettings(GroupName = ...)]` on a controller or action. **Asp.Versioning literals count
-too**: `MapToApiVersion(2)`, `HasApiVersion(new ApiVersion(1))` — on the endpoint, on the group
-builder, or inside a version set built in a local — become the group the conventional `'v'VVV` format
-produces (`v1`, `v1.1`). An endpoint carrying several versions stays ungrouped on purpose: it is one
-handler with one contract in every document, and the fallback below serves them all.
-
-Group names are matched through a small normalization (`EndpointGroup.Normalize`), so the compile-time
-`v1` finds the runtime group whether your `GroupNameFormat` renders it as `v1`, `V1` or the default
-`1.0`. Resolution at document-build time: the exact (normalized) group first, then the ungrouped entry,
-and a null group also matches a route that lives in exactly one group — so a purely cosmetic
-`WithGroupName` never hides an endpoint's errors. When two groups share a route, the TypeScript
-contract tells them apart too: `GetOrdersByIdV1Error` / `GetOrdersByIdV2Error`, keyed as
-`"GET /orders/{id} @v1"`.
-
-When the same route is mapped more than once and *nothing* tells the mappings apart, the contracts
-merge into one entry and `EAPI011` says so — because two API versions documented as one union is the
-silent failure mode of versioning. If the mappings really are one contract, suppress it where it fires.
-
-### Endpoints behind a mediator
-
-`sender.Send(new GetOrder(id))` used to end the walk. `ISender.Send` is implemented inside MediatR, so
-there is nothing to step into — while the handler that actually raises the failures sits right there in
-your compilation, just not reachable by following calls. The endpoint came out documented as having no
-failures at all, which reads as deliberate.
-
-The bridge is the message type. A handler is a source type implementing a generic interface constructed
-with the message, which is the shape MediatR, Wolverine and Brighter all share — nothing in the
-generator names a library:
-
-```csharp
-public sealed record GetOrder(Guid Id) : IRequest<Result<Order>>;
-
-public sealed class GetOrderHandler(OrderStore store) : IRequestHandler<GetOrder, Result<Order>>
-{
-    public Task<Result<Order>> Handle(GetOrder request, CancellationToken ct) =>
-        Task.FromResult(store.Find(request.Id));   // returns OrderErrors.NotFound
-}
-
-orders.MapGet("/{id:guid}", async (Guid id, ISender sender) =>
-    (await sender.Send(new GetOrder(id))).ToHttpResult());   // documents 404
-```
-
-It deliberately over-matches a little: a validator declared as `IValidator<GetOrder>` matches too, and
-walking it is right — its failures do reach that endpoint. Turn it off per project if the guess is wrong
-for you:
-
-```ini
-[*.cs]
-errorapi_follow_dispatch = false
-```
-
-When a dispatch cannot be resolved, `EAPI009` says so — whether the endpoint came out empty or merely
-lost part of its contract, because a partial contract reads as complete and that is the worse failure.
-
-### Pipeline behaviours are followed too
-
-Following a message into its handler is not the same as following it through the whole pipeline. A
-`ValidationBehaviour<TRequest, TResponse>` is generic over the request — that is the entire point of a
-behaviour — so nothing in your source ever constructs it with a concrete message, and no call chain
-leads to it. It is discovered by shape instead: crossing a dispatcher declared in assembly *M*, the
-walk also enters every source type implementing a generic interface from *M* whose type arguments are
-still type parameters. That matches behaviours exactly, and cannot match a handler — a handler closes
-the interface with a concrete message, and walking it here would leak one endpoint's failures into
-every other.
-
-`samples/Sample.Mediator.Validation.Api` shows it end to end: a command, a FluentValidation validator,
-a behaviour that throws an `[Error]`-annotated exception, handlers resolving their repository from a
-scope of their own — and not a single `[ProducesError]`:
-
-```
-POST /orders                200 400 409
-POST /orders/{id}/cancel    200 400 404 410
-```
-
-Two more things that sample demonstrates:
-
-- **A separate scope is not a boundary.** Both handlers resolve `IOrderRepository` from a child
-  container, and the 409, 404 and 410 those repositories return are all documented — the walk follows
-  an interface to its implementation regardless of where the instance came from.
-- **Convention handlers count.** A Wolverine-style `OrderHandler.Handle(PlaceOrder)` with no interface
-  at all is found through the message too, by the `*Handler`/`*Consumer` suffix and the
-  `Handle`/`Consume` method convention.
-
-A cross-cutting failure can also be declared once, on the message that rides through the pipeline:
-
-```csharp
-[ProducesError("Common.RateLimited")]
-public sealed record PlaceOrder(string Customer, decimal Total) : IRequest<Result<OrderPlaced>>;
-```
-
-Every endpoint that dispatches the message documents the code — no per-endpoint repetition.
-
-When the walk cannot see the failure at all — it comes from a referenced assembly, or from a delegate built at runtime — declare it on the endpoint:
-
-```csharp
-orders.MapGet("/", [ProducesError("Common.RateLimited")] (IOrderService service) =>
-        Results.Ok(Array.Empty<Order>()));
-```
-
-`[ProducesError]` also works on a method or a whole class, and is merged into every endpoint that reaches it.
-
-### Discovery across project boundaries
-
-The walk reads source, so it used to stop at an assembly boundary: an `OrderService` implemented in
-your Application project was invisible to the Api project's generator. Now the boundary carries the
-knowledge across. A project that runs the generator and maps no endpoints is a library, and a library's
-walk starts at its own public surface: every public method, every public property (reading one runs
-its getter), and every message its handlers accept, gets its reachable codes baked in as
-
-```csharp
-[assembly: ReachabilityExport("M:App.IOrderService.GetById(System.Guid)", "Orders.NotFound")]
-[assembly: ReachabilityExport("T:App.PayOrder", "Orders.AlreadyPaid")]
-```
-
-The consuming compilation reads these back through the reference and the walk continues as if the
-boundary were not there — a direct call into the library resolves through the method entry, a
-`sender.Send(new PayOrder(id))` whose handler lives in the library resolves through the message entry,
-and the referenced catalog's `[Error]` attributes supply the full descriptors, so the documented
-response is as rich as a same-assembly one. Exports compose transitively: each assembly's walk reads
-the exports of the assemblies *it* references.
-
-The dependency direction is the layered one, untouched: **`MyProject.Domain` knows nothing about
-`MyProject.API`.** Domain and Application reference only `ErrorApi.Abstractions` and the generator;
-each bakes its exports into its *own* assembly, and knowledge flows strictly along the references —
-`Domain → Application → API` — because the export a project reads was computed while reading the
-exports of the assemblies *it* references.
-
-Nothing to configure — referencing an ErrorApi project is the whole setup — but both sides have an
-explicit project-file knob when you want the trust spelled out:
-
-```xml
-<!-- MyProject.Domain.csproj — producer side: bake what my members can reach into my own assembly.
-     Already the default for a project that maps no endpoints. -->
-<ErrorApiExportReachability>true</ErrorApiExportReachability>
-
-<!-- MyProject.API.csproj — consumer side: which referenced assemblies the walk may read exports and
-     catalogs from. Unset means all references; exact names or a trailing-star prefix. -->
-<ErrorApiIncludeAssemblies>MyProject.Domain;MyProject.Application</ErrorApiIncludeAssemblies>
-```
-
-`.editorconfig` works too (`errorapi_export_reachability = false`); the project file wins when both
-are set.
-
-The runtime has a composable twin. Every assembly that runs the generator exposes its model as
-`<AssemblyName>.ErrorApiModel.Metadata`, and the API composes them explicitly:
-
-```csharp
-builder.Services.AddErrorApi(x => x.Include(
-    MyProject.Domain.ErrorApiModel.Metadata,
-    MyProject.Application.ErrorApiModel.Metadata));
-```
-
-The host's own model answers first; the included ones fill in what it cannot know — above all their
-**instance-type switches**, so a failure whose type is declared in Domain resolves by instance in the
-API process. `x.IncludeFromAssemblies(typeof(SomeDomainType).Assembly)` is the reflection convenience
-of the same thing (startup-only; prefer `Include` under trimming or native AOT).
-
-The same options object shapes what the model **documents** — without changing what the API does:
-
-```csharp
-builder.Services.AddErrorApi(x => x
-    .ErrorCodeDescriptionEnabled(builder.Environment.IsDevelopment())  // prose off in production
-    .HideErrorCodes("Orders.LegacyReplay")                              // or a predicate:
-    .FilterErrorCodes(e => e.StatusCode < 500));
-```
-
-`ErrorCodeDescriptionEnabled(false)` strips the longer `Description` prose from the OpenAPI response
-tables and examples and from the TypeScript contract's comments — codes, statuses and titles stay,
-because they are the contract. The filters hide whole entries from the documented responses, the
-catalog listing and the TS contract. Both are **documentation decisions only**: a hidden code still
-resolves at runtime and endpoints answer exactly as before, so flipping them per environment can never
-change behaviour. Several filters compose; an entry must pass all of them.
-
-`x.AddExceptionHandler(...)` is the lambda form of `AddErrorApiExceptionHandler()`, so one
-`AddErrorApi(x => ...)` call configures everything — still explicit, never a side effect. The
-pipeline half stays yours: `app.UseExceptionHandler();` (with `AddProblemDetails()` registered) is
-what makes the handler run.
-
-A referenced assembly that does **not** run the generator has nothing to export, and stays a boundary —
-`EAPI009` names it, `[ProducesError]` covers it. The library side has the same guard one boundary
-earlier: when a library's *own* walk stops at a dispatcher it cannot see past, `EAPI012` reports that
-the export it is baking is incomplete, instead of letting the consumer read it as complete.
-`samples/Sample.Shared.Errors` + `samples/Sample.Toolbox.Api` show the whole round trip live,
-body-inferred codes and both knobs included.
-
-Calling `AddErrorApi()` twice — two registering modules in one host — keeps the **first** model, in DI
-and on the ambient static alike; composing deliberately is what `x.Include(...)` is for.
-
-### Errors nobody can return
-
-A catalog entry that no endpoint reaches is reported as `EAPI010`, and it is worth knowing that this
-has two very different causes:
-
-- **The entry is dead.** Nothing raises it any more; delete it.
-- **The contract lost it.** It is raised behind something the walk cannot follow — a generic pipeline
-  behaviour, a handler in another assembly — so the endpoints that surface it never learned about it.
-  The fix is `[ProducesError]` on those endpoints, not deleting the entry.
-
-The second case is why the rule pays for itself: a contract that quietly lost half its failures shows
-up here as codes nobody documents. `EAPI009` approaches the same hole from the other side — it fires on
-any endpoint whose walk was stopped at a dispatcher, whether the contract came out empty or partial —
-and the two together bracket the failure: one names the endpoint that lost something, the other names
-what was lost.
-
-A project with no endpoints is not an API, so a shared catalog library stays silent — put the catalog
-in a project of its own and the rule has nothing to check it against.
-
-### Diagnostics
-
-| ID | Severity | Meaning |
-| --- | --- | --- |
-| `EAPI001` | Error | The same code is declared twice. |
-| `EAPI002` | Warning | The route template is not a compile-time constant, so the endpoint cannot be documented. |
-| `EAPI003` | Error | A `partial` catalog member is not `static`, does not return `Error`, or sits in a non-`partial` type; or `[Error]` is on an abstract or static type. |
-| `EAPI004` | Error | The status code is outside 100–599. |
-| `EAPI005` | Warning | `[ProducesError]` names a code that is not in the catalog. |
-| `EAPI006` | Info | A handler returning `Result` reaches no catalog entry at all. |
-| `EAPI007` | Warning | The handler could not be resolved to source. |
-| `EAPI008` | Warning | An explicit code disagrees with the `code:` literal in the member's body. |
-| `EAPI009` | Warning | The walk stopped at a dispatcher and the endpoint documents no failures. |
-| `EAPI010` | Warning | A declared error is not returned by any endpoint in the project. |
-| `EAPI011` | Warning | The same route is mapped more than once with no distinct API description groups, so the contracts merged into one. |
-| `EAPI012` | Info | A reachability export stopped at a dispatcher; what this library bakes for its consumers is incomplete. |
-| `EAPI013` | Info | `[Error]` and `[ErrorStatusCode]` declare different statuses on one entry; the override wins, but one of them is stale. |
-
-Generator diagnostics are not suppressible with `#pragma`. For a deliberate one-off, silence the rule where it fires — `[SuppressErrorApi("EAPI010")]` on the member, or on the mapping method / handler for the endpoint rules — and keep `.editorconfig` / `<NoWarn>` for project-wide tuning.
-
----
-
-## The TypeScript contract
-
-```bash
-dotnet run --project samples/Sample.Api -- --emit-error-contract ../client/api-errors.ts
-```
-
-```ts
-export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
-
-export interface ApiProblem<TCode extends ApiErrorCode = ApiErrorCode> {
-  code: TCode;
-  status: number;
-  title?: string;
-  detail?: string;
-}
-
-/** Failures of `POST /orders/{id}/pay`. */
-export type PostOrdersByIdPayError =
-  | ApiProblem<"Orders.AlreadyPaid">
-  | ApiProblem<"Orders.AmountMismatch">
-  | ApiProblem<"Orders.Cancelled">
-  | ApiProblem<"Orders.CurrencyMismatch">
-  | ApiProblem<"Orders.NotFound">;
-```
-
-A `switch` over `problem.code` with an `assertNever` default now fails to compile the moment the API gains a failure mode the client does not handle. See `samples/client/orders-client.ts`.
-
-The same module is served live at `/openapi/errors.ts` after `app.MapErrorContract()`, which suits a frontend build step better than a checked-in copy.
-
----
-
-## Where this sits next to the alternatives
-
-| | Failure typing | Maps to `ProblemDetails` | Documents errors in OpenAPI | Typed client errors |
-| --- | --- | --- | --- | --- |
-| **ErrorOr / FluentResults / OneOf** | yes | yes, at runtime | no | no |
-| **Exceptions and a handler** | no | yes, at runtime | no | no |
-| **NSwag / Kiota** | — | — | only what you hand-wrote with `.Produces(...)` | success shapes only |
-| **`.Produces<ProblemDetails>(404)` by hand** | — | — | yes, until someone forgets | no |
-| **ErrorApi** | yes, or bring your own | yes, generated | yes, derived from the code | yes, generated union |
-
-The honest framing: ErrorOr solves the return type, NSwag solves the client shape, and neither answers *"which errors does this endpoint return?"* ErrorApi answers exactly that question and leans on the other two for everything else.
-
-## Native AOT
-
-Nothing in the runtime path uses reflection: the catalog is `const` data, the endpoint lookup is a `switch` over string literals, the type lookup is a pattern switch, and `Result → IResult` is a branch. Every package is marked `IsAotCompatible`; the sample builds with `PublishAot` enabled so the trim and AOT analyzers run over it in CI, not just in the README.
-
-## Performance
-
-`benchmarks/ErrorApi.Benchmarks` measures the request-path cost — the generated lookups and the
-`→ IResult` mapping, base library and every adapter — against raw `TypedResults` as the floor:
-
-```bash
-dotnet run -c Release --project benchmarks/ErrorApi.Benchmarks
-```
-
-Measured on .NET 10.0.9, x64 (i9-9900K), BenchmarkDotNet 0.15.4, in-process short-run job:
-
-| Benchmark | Mean | Allocated |
+On .NET 8/9, or on any project that stays on Swagger, add `ErrorApi.Swashbuckle` and
+`services.AddSwaggerGen(c => c.AddErrorApiResponses());` — the identical responses, built by the same
+shared code.
+
+Already on ErrorOr, OneOf, language-ext, FluentResults, Ardalis.Result or CSharpFunctionalExtensions?
+Take the matching adapter package and keep your types — often a bare `[Error]` on what you already
+wrote is the entire onboarding. See [docs/adapters.md](docs/adapters.md) and
+[docs/getting-started.md](docs/getting-started.md).
+
+## How it works
+
+1. The generator reads your `[Error]`/`[ErrorCatalog]` declarations into a catalog — codes, statuses
+   and titles inferred from what is already written (names, bodies, base constructors).
+2. It finds every endpoint — Minimal API `Map*` call sites and attribute-routed controllers — and
+   **walks each handler through the call graph**: into interfaces and their implementations, past
+   mediators via the message type, into pipeline behaviours, and across assembly boundaries through
+   baked-in exports.
+3. What it cannot see, it says out loud: thirteen `EAPI` diagnostics report stopped walks, drifting
+   codes and unreachable entries at build time, instead of letting the contract lie.
+4. It emits a reflection-free model — switch statements, no runtime scan — that one OpenAPI
+   transformer (or the Swashbuckle filter) and a TypeScript writer render from.
+5. At runtime the same model maps every failure to `application/problem+json` carrying a stable
+   `code` member, so the response always matches the document.
+
+The full mechanics: [docs/discovery.md](docs/discovery.md) · [docs/catalog.md](docs/catalog.md) ·
+[docs/typescript.md](docs/typescript.md).
+
+## Why it is worth it
+
+- **The contract stops lying.** Every reachable failure is documented per endpoint, and the response
+  body always matches — same model on both sides.
+- **Nothing is written twice.** Codes come from names or bodies, statuses from catalogs or base
+  constructors; duplication is what the diagnostics hunt down, not what the library asks for.
+- **Keep your result library.** Seven adapters produce byte-identical contracts; exceptions work too.
+- **The client gets a compiler.** `errors.ts` turns `catch` folklore into an exhaustive union — add a
+  failure server-side and the frontend build breaks instead of production.
+- **Free at runtime.** No reflection on the request path, native-AOT clean, and measured: success
+  costs the same as hand-written `TypedResults.Ok`.
+
+ErrorOr solves the return type, NSwag solves the client shape — neither answers *"which errors does
+this endpoint return?"*. ErrorApi answers exactly that question and leans on the others for the rest.
+
+## Benchmarks
+
+.NET 10, x64, BenchmarkDotNet — raw `TypedResults` as the floor:
+
+| | Mean | Allocated |
 | --- | ---: | ---: |
-| `TypedResults.Ok(7)` *(the floor)* | 4.5 ns | 24 B |
-| `TypedResults.Problem(404, ...)` *(the floor)* | 24.3 ns | 168 B |
-| `FindError` (generated code switch) | 5.2 ns | 0 B |
-| `FindErrorForInstance` (generated type switch) | 2.5 ns | 0 B |
-| `TryGetEndpointErrors` (generated route switch) | 3.4 ns | 0 B |
-| `Result<T>` success → `ToHttpResult` | 4.4 ns | 24 B |
-| `Result<T>` failure → `ToHttpResult` | 60.1 ns | 304 B |
-| Adapter success paths (ErrorOr, OneOf, language-ext, FluentResults, Ardalis, CFE) | 4.2–5.9 ns | 24 B |
-| Adapter failure paths (catalog resolution + problem construction) | 64–81 ns | 304–328 B |
+| Success path (any adapter) vs `TypedResults.Ok` | 4.2–5.9 ns vs 4.5 ns | 24 B vs 24 B |
+| Generated lookups (`FindError`, type switch, route switch) | 2.5–5.8 ns | 0 B |
+| Failure → `application/problem+json` | 60–81 ns | 304–328 B |
 
-What the numbers say: the **success path costs the same as writing `TypedResults.Ok` by hand** — the
-adapters add nothing measurable — the generated lookups are single-digit-nanosecond and
-allocation-free, and a failure costs ~60–80 ns end to end, of which 24 ns is ASP.NET's own
-`ProblemDetails` machinery. The first benchmark run also paid for itself twice: it caught
-FluentResults' `IsFailed`/`Errors` running an allocating LINQ `OfType` per call (the adapter now scans
-`Reasons` directly — its success path went from 52 ns / 120 B to 5.5 ns / 24 B), and it flagged
-`ToProblem` building a temporary extensions dictionary that ASP.NET then copied (it now writes into
-the `ProblemDetails` it constructs — the failure path halved, 130 → 60 ns and 576 → 304 B).
+Full tables, methodology and the optimizations the first run bought:
+[docs/performance.md](docs/performance.md) · [benchmarks/](benchmarks/ErrorApi.Benchmarks).
 
----
+## Documentation
 
-## Repository layout
+| | |
+| --- | --- |
+| [docs/getting-started.md](docs/getting-started.md) | the quickstart in detail, exceptions, package-owned failure types |
+| [docs/catalog.md](docs/catalog.md) | declaring entries, inference rules, the "which attribute, when" table |
+| [docs/adapters.md](docs/adapters.md) | ErrorOr, OneOf, language-ext, FluentResults, Ardalis, CFE — and version compatibility |
+| [docs/discovery.md](docs/discovery.md) | the call-graph walk, boundaries, versioned routes, diagnostics, known limits |
+| [docs/typescript.md](docs/typescript.md) | the generated client contract |
+| [docs/performance.md](docs/performance.md) | benchmarks and native AOT |
+| [docs/repository.md](docs/repository.md) | layout, build & test, how this sits next to the alternatives |
+| [specs/](specs) | the feature specifications: requirements and their acceptance gates |
+| [AGENTS.md](AGENTS.md) | the map for coding agents and contributors: invariants and the checks that must pass |
 
-```
-src/ErrorApi.Abstractions   Error, Result<T>, [Error], [ProducesError], the metadata contracts
-src/ErrorApi.Generator      the incremental generator (netstandard2.0, Roslyn 4.14)
-src/ErrorApi.AspNetCore     Result→IResult mapping, the OpenAPI transformer, the TypeScript writer
-src/ErrorApi.ErrorOr        adapter, pinned to ErrorOr 2.1.x
-src/ErrorApi.OneOf          adapter, pinned to OneOf 3.0.x — and the entry point for hand-rolled unions
-src/ErrorApi.LanguageExt    adapter, pinned to LanguageExt.Core 4.4.x
-src/ErrorApi.FluentResults  adapter, pinned to FluentResults 3.16.x
-tests/ErrorApi.TestKit      the generator harness, the snapshot assertion, a hand-built model
-tests/…Generator.Tests      core tests — no result library referenced, so they pass on the core alone
-tests/ErrorApi.*.Tests      one suite per adapter, each pinning its own library version
-tests/…Integration.Tests    three samples running under WebApplicationFactory: live documents, live problems
-benchmarks/ErrorApi.Benchmarks  request-path cost, base library and every adapter, vs raw TypedResults
-samples/Sample.Api          the reference API: route groups, interface dispatch, [ProducesError], AOT
-samples/Sample.ErrorOr.Api  the same API in ErrorOr, with codes read out of the factory calls
-samples/Sample.OneOf.Api    the same API as a union, with the failure cases carrying [Error]
-samples/Sample.LanguageExt.Api  the same API in Fin<T>, with annotated Expected subclasses
-samples/Sample.Exceptions.Api   the same API with no result type at all, only annotated exceptions
-samples/Sample.Mediator.Api     the same API with every endpoint behind MediatR
-samples/Sample.FluentResults.Api  the same API in FluentResults, with annotated Error subclasses
-samples/Sample.Wolverine.Api    the same API behind Wolverine, handlers matched by convention
-samples/Sample.Controllers.Api  the same API on attribute-routed controllers
-samples/Sample.Shared.Errors    a class library: shared catalog + services, exports baked in at build
-samples/Sample.Toolbox.Api      consumes the library across the assembly boundary; the toolbox features
-samples/Sample.Ardalis.Api      the same API in Ardalis.Result, with a factory catalog
-samples/Sample.Cfe.Api          the same API in CSharpFunctionalExtensions Result<T, E>
-samples/Sample.Mediator.Validation.Api  MediatR + FluentValidation: the behaviour's 400 discovered on every endpoint
-samples/client              how the generated union is consumed
-```
-
-Each adapter is its own package so you take only the dependency you already have. They share one generator: the compile-time half needs no per-library knowledge.
-
-### Build and test
-
-```bash
-dotnet test ErrorApi.slnx
-```
-
-The generator tests compile real snippets against the live ASP.NET Core assemblies and compare the emitted files to approved snapshots under `tests/ErrorApi.Generator.Tests/Snapshots/`. To re-approve after an intentional change:
-
-```bash
-ERRORAPI_ACCEPT_SNAPSHOTS=1 dotnet test ErrorApi.slnx
-```
-
-Then read the diff. That diff is the review.
-
-The integration suite boots `Sample.Api`, `Sample.Controllers.Api` and `Sample.Toolbox.Api` in-process
-and asserts against the live `/openapi/v1.json`, a live `application/problem+json` response carrying
-the catalog code, and the served TypeScript contract — the end-to-end claims are CI gates, not manual
-checks.
-
-Each adapter has its own suite, referencing only its own library, so a version bump cannot leak into
-anything else. The version under test is a build property, which is how one suite covers a range:
-
-```bash
-dotnet test tests/ErrorApi.ErrorOr.Tests -p:ErrorOrTestVersion=2.0.1
-```
-
-```bash
-dotnet test tests/ErrorApi.OneOf.Tests -p:OneOfTestVersion=3.0.263
-```
-
-```bash
-dotnet test tests/ErrorApi.LanguageExt.Tests -p:LanguageExtTestVersion=4.4.0
-```
-
-CI runs that as a matrix. The adapters are verified against ErrorOr 1.10.0 / 2.0.1 / 2.1.1,
-OneOf 3.0.263 / 3.0.271, LanguageExt.Core 4.4.0 / 4.4.9, FluentResults 3.15.0 / 3.16.0,
-Ardalis.Result 9.1.0 / 10.1.0, CSharpFunctionalExtensions 3.4.3 / 3.7.0 and LanguageExt.Core
-5.0.0-beta-77. language-ext **v5** has no stable release yet, so `ErrorApi.LanguageExt.V5` ships as a
-**prerelease** tracking the beta — it goes stable the moment 5.0.0 does, and the v4 package stays as it is.
-
-Working on this repository with a coding agent? [`AGENTS.md`](AGENTS.md) is the map: invariants, where each concern lives, and the checks that have to pass.
-
----
-
-## Known limits
-
-- Route templates must be compile-time constants (`EAPI002` tells you when they are not).
-- Discovery follows source within the compilation — plus the [reachability another ErrorApi project exported](#discovery-across-project-boundaries). A referenced assembly that does *not* run the generator stays opaque: its failures need `[ProducesError]`, and `[assembly: ErrorMapping]` gives such a type a catalog entry, but not an endpoint.
-- Following a message past a dispatcher is a heuristic. It matches: a source type implementing a generic interface constructed with the message; a `*Handler`/`*Consumer` type with a `Handle`/`Consume` method taking the message (Wolverine's convention); and source types generic over the request implementing an interface from the dispatcher's assembly (pipeline behaviours). A handler resolved some other way — by name, by a registry — is still not found, and `EAPI009` reports it, on partial contracts too.
-- Endpoints are matched by normalized route template, HTTP method and API description group — `WithGroupName(...)`, `[ApiExplorerSettings(GroupName = ...)]` or an Asp.Versioning literal (`MapToApiVersion`, `HasApiVersion`, a version set in a local) tells two versions of one route apart. A version computed at runtime is still invisible; when that leaves two mappings of one route indistinguishable, `EAPI011` reports the merge instead of letting it pass silently. Host-based routing (`RequireHost`) has no reflection in `ApiDescription` and still shares one entry.
-- The call walk is bounded at a depth of 12 by default; an unusually layered application can raise it with `errorapi_walk_depth = 20` in `.editorconfig`.
+MIT licensed.
