@@ -1,0 +1,11 @@
+<Project>
+
+  <!-- Inherit the repository root props (Directory.Build.props does not chain automatically). -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)..'))" />
+
+  <ItemGroup>
+    <!-- Coverage collection for every suite: dotnet test with collect "XPlat Code Coverage". -->
+    <PackageReference Include="coverlet.collector" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

@@ -74,6 +74,20 @@ app.MapGet("/gateway/ping", [ProducesError(typeof(TimeoutException))] () =>
     .WithTags("Gateway")
     .WithSummary("Pings the upstream gateway — 504 declared by type");
 
+// The implicit catalog: FlagErrors below carries no [Error] at all — the class declares membership
+// and the default status, the members declare the names, [ErrorStatusCode] overrides where needed.
+app.MapGet("/flags/{name}", (string name) =>
+    {
+        if (name == "beta")
+        {
+            return FlagErrors.FeatureDisabled.ToProblem();
+        }
+
+        return name == "busy" ? FlagErrors.TemporarilyLocked.ToProblem() : Results.Ok(new { name, enabled = true });
+    })
+    .WithTags("Flags")
+    .WithSummary("Reads a feature flag — 403/423 from an attribute-free catalog");
+
 app.Run();
 
 /// <summary>The entry point, visible to WebApplicationFactory-based integration tests.</summary>
@@ -94,6 +108,20 @@ namespace Sample.Toolbox.Api
         /// </summary>
         [Error(429, Title = "Too many requests"), SuppressErrorApi("EAPI010")]
         public static partial Error Throttled { get; }
+    }
+
+    /// <summary>
+    /// The implicit catalog: inside an <c>[ErrorCatalog]</c> type, a <c>static partial Error</c>
+    /// member is an entry by membership — no <c>[Error]</c> anywhere. The class gives the prefix and
+    /// the default status; <c>[ErrorStatusCode]</c> overrides per entry.
+    /// </summary>
+    [ErrorCatalog("Toolbox.Flags", StatusCodes.Status403Forbidden)]
+    public static partial class FlagErrors
+    {
+        public static partial Error FeatureDisabled { get; }
+
+        [ErrorStatusCode(StatusCodes.Status423Locked)]
+        public static partial Error TemporarilyLocked { get; }
     }
 
     /// <summary>Stands in for an SDK that throws its own exception type.</summary>

@@ -208,3 +208,73 @@ public sealed class ErrorOrCodeInferenceTests
             StringComparison.Ordinal);
     }
 }
+
+/// <summary>
+/// The runtime mapping over ErrorOr: the failure resolves through its code, the success shapes and the
+/// Created family answer, and the awaited forms behave like their synchronous twins.
+/// </summary>
+[Collection("ambient-metadata")]
+public sealed class ErrorOrMappingTests
+{
+    private static ErrorOr.Error KnownFailure() =>
+        ErrorOr.Error.NotFound(code: "Orders.NotFound", description: "No such order.");
+
+    [Fact]
+    public void A_failure_resolves_through_its_code_and_a_success_through_its_value()
+    {
+        using (ErrorApiRuntime.Use(new FakeMetadata()))
+        {
+            ErrorOr.ErrorOr<int> ok = 7;
+            Assert.Equal(7, Assert.IsType<Ok<int>>(ok.ToHttpResult()).Value);
+
+            ErrorOr.ErrorOr<int> failed = KnownFailure();
+            var problem = Assert.IsType<ProblemHttpResult>(failed.ToHttpResult());
+
+            Assert.Equal(404, problem.StatusCode);
+            Assert.Equal("Orders.NotFound", Assert.Contains(ResultHttpExtensions.CodeExtensionName, problem.ProblemDetails.Extensions));
+        }
+    }
+
+    [Fact]
+    public void The_shaped_success_the_valueless_form_and_ToProblem_all_answer()
+    {
+        using (ErrorApiRuntime.Use(new FakeMetadata()))
+        {
+            ErrorOr.ErrorOr<int> ok = 7;
+            Assert.IsType<NoContent>(ok.ToHttpResult(_ => Microsoft.AspNetCore.Http.TypedResults.NoContent()));
+            Assert.IsType<NoContent>(ok.ToNoContentResult());
+
+            ErrorOr.ErrorOr<int> failed = KnownFailure();
+            Assert.IsType<ProblemHttpResult>(failed.ToNoContentResult());
+            Assert.Equal(404, Assert.IsType<ProblemHttpResult>(KnownFailure().ToProblem()).StatusCode);
+        }
+    }
+
+    [Fact]
+    public void The_created_family_builds_locations_from_the_value()
+    {
+        ErrorOr.ErrorOr<int> ok = 7;
+
+        Assert.Equal("/fixed", Assert.IsType<Created<int>>(ok.ToCreated("/fixed")).Location);
+        Assert.Equal("/things/7", Assert.IsType<Created<int>>(ok.ToCreated(v => $"/things/{v}")).Location);
+        Assert.Equal("/things/7", Assert.IsType<Created<int>>(
+            ok.ToCreatedAtUri(v => new Uri($"/things/{v}", UriKind.Relative))).Location);
+        Assert.Equal("GetThing", Assert.IsType<CreatedAtRoute<int>>(
+            ok.ToCreatedAtRoute("GetThing", v => new RouteValueDictionary { ["id"] = v })).RouteName);
+    }
+
+    [Fact]
+    public async Task The_awaited_forms_map_the_same_way()
+    {
+        using (ErrorApiRuntime.Use(new FakeMetadata()))
+        {
+            Assert.IsType<Ok<int>>(await Task.FromResult<ErrorOr.ErrorOr<int>>(7).ToHttpResult());
+            Assert.IsType<NoContent>(await Task.FromResult<ErrorOr.ErrorOr<int>>(7).ToHttpResult(_ => Microsoft.AspNetCore.Http.TypedResults.NoContent()));
+            Assert.IsType<NoContent>(await Task.FromResult<ErrorOr.ErrorOr<int>>(7).ToNoContentResult());
+            Assert.Equal("/things/7", Assert.IsType<Created<int>>(
+                await Task.FromResult<ErrorOr.ErrorOr<int>>(7).ToCreated(v => $"/things/{v}")).Location);
+            Assert.IsType<CreatedAtRoute<int>>(
+                await Task.FromResult<ErrorOr.ErrorOr<int>>(7).ToCreatedAtRoute("GetThing", v => new RouteValueDictionary { ["id"] = v }));
+        }
+    }
+}

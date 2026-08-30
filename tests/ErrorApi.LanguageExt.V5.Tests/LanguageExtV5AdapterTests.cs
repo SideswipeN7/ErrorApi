@@ -102,3 +102,63 @@ public sealed class LanguageExtV5AdapterTests
         }
     }
 }
+
+/// <summary>
+/// The v5 runtime mapping over the same shapes the v4 suite covers — the beta must hold the whole
+/// surface, not just the discovery path.
+/// </summary>
+[Collection("ambient-metadata")]
+public sealed class LanguageExtV5MappingTests
+{
+    private sealed record OrderNotFound(Guid Id) : LanguageExt.Common.Expected("Order not found", 404);
+
+    private static FakeMetadata BuildMetadata()
+    {
+        var metadata = new FakeMetadata();
+        metadata.ByType[typeof(OrderNotFound)] = FakeMetadata.NotFound;
+        return metadata;
+    }
+
+    [Fact]
+    public void Fin_maps_both_ways_and_the_typed_failure_resolves_by_instance()
+    {
+        using (ErrorApiRuntime.Use(BuildMetadata()))
+        {
+            LanguageExt.Fin<int> ok = 7;
+            Assert.Equal(7, Assert.IsType<Ok<int>>(ok.ToHttpResult()).Value);
+
+            LanguageExt.Fin<int> failed = LanguageExt.Prelude.FinFail<int>(new OrderNotFound(Guid.Empty));
+            var problem = Assert.IsType<ProblemHttpResult>(failed.ToHttpResult());
+
+            Assert.Equal(404, problem.StatusCode);
+        }
+    }
+
+    [Fact]
+    public void The_valueless_form_the_Either_and_the_created_family_all_answer()
+    {
+        using (ErrorApiRuntime.Use(BuildMetadata()))
+        {
+            LanguageExt.Fin<int> ok = 7;
+            Assert.IsType<NoContent>(ok.ToNoContentResult());
+            Assert.Equal("/fixed", Assert.IsType<Created<int>>(ok.ToCreated("/fixed")).Location);
+            Assert.Equal("/things/7", Assert.IsType<Created<int>>(
+                ok.ToCreatedAtUri(v => new Uri($"/things/{v}", UriKind.Relative))).Location);
+            Assert.IsType<CreatedAtRoute<int>>(
+                ok.ToCreatedAtRoute("GetThing", v => new Microsoft.AspNetCore.Routing.RouteValueDictionary { ["id"] = v }));
+
+            LanguageExt.Either<LanguageExt.Common.Error, int> right = 7;
+            Assert.Equal(7, Assert.IsType<Ok<int>>(right.ToHttpResult()).Value);
+        }
+    }
+
+    [Fact]
+    public async Task The_awaited_forms_map_the_same_way()
+    {
+        using (ErrorApiRuntime.Use(BuildMetadata()))
+        {
+            Assert.IsType<Ok<int>>(await Task.FromResult<LanguageExt.Fin<int>>(7).ToHttpResult());
+            Assert.IsType<NoContent>(await Task.FromResult<LanguageExt.Fin<int>>(7).ToNoContentResult());
+        }
+    }
+}

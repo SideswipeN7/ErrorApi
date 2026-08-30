@@ -18,8 +18,9 @@ that introduces reflection on the request path, is going the wrong way.
 
 ```bash
 dotnet build ErrorApi.slnx                       # must be warning-free
-dotnet test ErrorApi.slnx                        # 242 tests across nine suites
+dotnet test ErrorApi.slnx                        # 259 tests across nine suites
 dotnet run -c Release --project benchmarks/ErrorApi.Benchmarks   # request-path cost, in-process (SAC-safe)
+dotnet test ErrorApi.slnx --collect:"XPlat Code Coverage"        # per-suite cobertura XML (coverlet)
 ERRORAPI_ACCEPT_SNAPSHOTS=1 dotnet test ErrorApi.slnx   # re-approve snapshots, then read the diff
 dotnet run --project samples/Sample.Api          # /swagger, /scalar, /openapi/v1.json, /openapi/errors.ts
 dotnet run --project samples/Sample.ErrorOr.Api  # and .OneOf. / .LanguageExt. — same API, same contract
@@ -154,6 +155,12 @@ and asserts against live documents and responses — the end-to-end claims are g
 Reachability-export cost, measured once (2026-08): a synthetic 200-type / ~1,200-public-member library
 builds in the same time with `ErrorApiExportReachability` on and off (hot builds ~1.7–2.2 s either
 way) — the shared walker caches keep the export within build noise. Re-measure before optimizing.
+
+Line coverage, measured 2026-08 (merged across all nine suites, generated files excluded; attribute
+classes read via Roslyn sit at 0% by nature): **88% of hand-written src overall** — Generator 94%,
+AspNetCore 84%, adapters 57–100% (OneOf lowest: the 5/6/7-arm overloads are unexecuted),
+Abstractions 60%. Collect with the command above; merge by unioning line hits across the per-suite
+cobertura files (the `reportgenerator` global tool does not run on this machine's preview SDK).
 
 `GeneratorHarness` (in `ErrorApi.TestKit`) compiles source snippets against the assemblies that test
 process already runs on, so each suite exercises the real surface of its own library rather than stubs.
