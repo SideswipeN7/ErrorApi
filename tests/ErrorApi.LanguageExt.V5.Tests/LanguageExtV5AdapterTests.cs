@@ -127,7 +127,7 @@ public sealed class LanguageExtV5MappingTests
             LanguageExt.Fin<int> ok = 7;
             Assert.Equal(7, Assert.IsType<Ok<int>>(ok.ToHttpResult()).Value);
 
-            LanguageExt.Fin<int> failed = LanguageExt.Prelude.FinFail<int>(new OrderNotFound(Guid.Empty));
+            LanguageExt.Fin<int> failed = new OrderNotFound(Guid.Empty);
             var problem = Assert.IsType<ProblemHttpResult>(failed.ToHttpResult());
 
             Assert.Equal(404, problem.StatusCode);
