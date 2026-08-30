@@ -1,4 +1,6 @@
+#if NET10_0_OR_GREATER
 using Microsoft.AspNetCore.OpenApi;
+#endif
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -30,7 +32,12 @@ public static class ErrorApiRegistration
 
         services.AddSingleton(metadata);
         ErrorApiRuntime.Metadata = metadata;
+
+#if NET10_0_OR_GREATER
+        // The built-in pipeline writes to Microsoft.OpenApi 2.x from .NET 10; on net8/net9 the
+        // document half comes from the ErrorApi.Swashbuckle operation filter instead.
         services.ConfigureAll<OpenApiOptions>(options => options.AddErrorResponses());
+#endif
 
         return services;
     }

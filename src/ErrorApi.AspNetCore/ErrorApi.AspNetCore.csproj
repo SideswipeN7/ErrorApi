@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
     <RootNamespace>ErrorApi</RootNamespace>
     <PackageId>ErrorApi.AspNetCore</PackageId>
     <Description>Minimal API integration for ErrorApi: Result to IResult mapping, OpenAPI error responses, and a TypeScript error contract. Ships the source generator.</Description>
@@ -13,11 +13,15 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="ErrorApi.Generator.Tests" />
+    <InternalsVisibleTo Include="ErrorApi.Swashbuckle" />
   </ItemGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <!-- The transformer writes to Microsoft.OpenApi 2.x, which the built-in pipeline uses from .NET 10;
+         net9''s package still rides OpenApi 1.6. On net8/net9 the transformer is compiled out and the
+         document comes from ErrorApi.Swashbuckle instead. -->
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Condition="'$(TargetFramework)' == 'net10.0'" />
   </ItemGroup>
 
   <ItemGroup>
@@ -39,6 +43,9 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\SharedNormalization.cs" Link="Shared\SharedNormalization.cs" />
+    <!-- The response builder writes to Microsoft.OpenApi 2.x, present here only on net10. -->
+    <Compile Include="..\Shared\ErrorResponseBuilder.cs" Link="Shared\ErrorResponseBuilder.cs"
+             Condition="'$(TargetFramework)' == 'net10.0'" />
   </ItemGroup>
 
 </Project>

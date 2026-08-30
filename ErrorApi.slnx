@@ -12,6 +12,7 @@
     <Project Path="src/ErrorApi.ArdalisResult/ErrorApi.ArdalisResult.csproj" />
     <Project Path="src/ErrorApi.CSharpFunctionalExtensions/ErrorApi.CSharpFunctionalExtensions.csproj" />
     <Project Path="src/ErrorApi.LanguageExt.V5/ErrorApi.LanguageExt.V5.csproj" />
+    <Project Path="src/ErrorApi.Swashbuckle/ErrorApi.Swashbuckle.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ErrorApi.TestKit/ErrorApi.TestKit.csproj" />
@@ -24,6 +25,7 @@
     <Project Path="tests/ErrorApi.CSharpFunctionalExtensions.Tests/ErrorApi.CSharpFunctionalExtensions.Tests.csproj" />
     <Project Path="tests/ErrorApi.LanguageExt.V5.Tests/ErrorApi.LanguageExt.V5.Tests.csproj" />
     <Project Path="tests/ErrorApi.Integration.Tests/ErrorApi.Integration.Tests.csproj" />
+    <Project Path="tests/ErrorApi.Swashbuckle.Tests/ErrorApi.Swashbuckle.Tests.csproj" />
   </Folder>
   <Folder Name="/benchmarks/">
     <Project Path="benchmarks/ErrorApi.Benchmarks/ErrorApi.Benchmarks.csproj" />

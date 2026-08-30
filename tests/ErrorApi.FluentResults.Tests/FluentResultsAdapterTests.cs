@@ -218,3 +218,21 @@ public sealed class FluentResultsMappingTests
     }
 }
 
+
+/// <summary>The adapter''s knob, reachable from the one AddErrorApi lambda.</summary>
+public sealed class FluentResultsOptionsTests
+{
+    [Fact]
+    public void IncludeAllFluentResultErrors_is_the_lambda_form_of_the_static()
+    {
+        try
+        {
+            new ErrorApi.AspNetCore.ErrorApiOptions().IncludeAllFluentResultErrors();
+            Assert.True(FluentResultsHttpExtensions.IncludeAllErrors);
+        }
+        finally
+        {
+            FluentResultsHttpExtensions.IncludeAllErrors = false;
+        }
+    }
+}

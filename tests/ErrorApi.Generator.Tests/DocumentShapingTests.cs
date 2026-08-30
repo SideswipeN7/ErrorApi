@@ -184,3 +184,25 @@ public sealed class ExceptionHandlerOptionTests
             handler => handler is ErrorApiExceptionHandler);
     }
 }
+
+/// <summary>The remaining knobs of the one-lambda configuration.</summary>
+[Collection("ambient-metadata")]
+public sealed class OptionsLambdaTests
+{
+    [Fact]
+    public void WithProblemTypeUri_is_the_lambda_form_of_the_static()
+    {
+        try
+        {
+            new ErrorApiOptions().WithProblemTypeUri("https://errors.example.com/{0}");
+
+            Assert.Equal(
+                "https://errors.example.com/Orders.NotFound",
+                new Error("Orders.NotFound", 404).ToProblem().ProblemDetails.Type);
+        }
+        finally
+        {
+            new ErrorApiOptions().WithProblemTypeUri(null);
+        }
+    }
+}

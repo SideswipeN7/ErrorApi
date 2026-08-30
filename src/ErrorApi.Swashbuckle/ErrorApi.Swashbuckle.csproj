@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <RootNamespace>ErrorApi.Swashbuckle</RootNamespace>
+    <PackageId>ErrorApi.Swashbuckle</PackageId>
+    <Description>Swashbuckle integration for ErrorApi: an operation filter that documents every endpoint's reachable failures, byte-identical to the built-in OpenAPI transformer. The road to ErrorApi documents on net8/net9, and for any project that stays on Swagger.</Description>
+    <IsAotCompatible Condition="'$(TargetFramework)' != 'net8.0'">true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerGen" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ErrorApi.AspNetCore\ErrorApi.AspNetCore.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The same response builder the built-in transformer compiles, so the two generators can never
+         drift apart. On net10 ErrorApi.AspNetCore already compiles it and exposes it via
+         InternalsVisibleTo; linking it again there would shadow that copy (CS0436). -->
+    <Compile Include="..\Shared\ErrorResponseBuilder.cs" Link="Shared\ErrorResponseBuilder.cs"
+             Condition="'$(TargetFramework)' != 'net10.0'" />
+  </ItemGroup>
+
+</Project>

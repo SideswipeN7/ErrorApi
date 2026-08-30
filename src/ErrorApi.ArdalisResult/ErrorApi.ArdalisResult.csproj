@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
     <RootNamespace>ErrorApi.Interop</RootNamespace>
     <PackageId>ErrorApi.ArdalisResult</PackageId>
     <Description>Maps Ardalis.Result results onto Minimal API results and ErrorApi's documented error catalog.</Description>

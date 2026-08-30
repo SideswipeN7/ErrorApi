@@ -84,8 +84,8 @@ public static class ErrorApiResultFilterExtensions
             }
 
             endpoint.Metadata.Add(returned == typeof(Result)
-                ? new ProducesResponseTypeMetadata(StatusCodes.Status204NoContent)
-                : new ProducesResponseTypeMetadata(StatusCodes.Status200OK, returned.GetGenericArguments()[0], ["application/json"]));
+                ? new SuccessMetadata(StatusCodes.Status204NoContent, null, [])
+                : new SuccessMetadata(StatusCodes.Status200OK, returned.GetGenericArguments()[0], ["application/json"]));
         });
 
         return builder;
@@ -106,4 +106,15 @@ public static class ErrorApiResultFilterExtensions
 
     private static bool IsErrorApiResult(Type type) =>
         type == typeof(Result) || (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Result<>));
+
+    // Our own record rather than ProducesResponseTypeMetadata, so the shape is identical on every
+    // supported framework regardless of that type's constructor surface.
+    private sealed record SuccessMetadata(int StatusCode, Type? Type, string[] ContentTypes) : IProducesResponseTypeMetadata
+    {
+        Type? IProducesResponseTypeMetadata.Type => Type;
+
+        int IProducesResponseTypeMetadata.StatusCode => StatusCode;
+
+        System.Collections.Generic.IEnumerable<string> IProducesResponseTypeMetadata.ContentTypes => ContentTypes;
+    }
 }

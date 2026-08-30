@@ -34,6 +34,19 @@ public sealed class ErrorApiOptions
         return this;
     }
 
+    /// <summary>
+    /// Fills <c>ProblemDetails.type</c> from this template, with <c>{0}</c> replaced by the error
+    /// code — for example <c>https://errors.contoso.com/{0}</c>. The lambda-form of
+    /// <see cref="ResultHttpExtensions.ProblemTypeUriFormat"/>, so the whole configuration lives in
+    /// one <c>AddErrorApi(x =&gt; ...)</c> call.
+    /// </summary>
+    /// <param name="format">The URI template; <see langword="null"/> omits <c>type</c> (the default).</param>
+    public ErrorApiOptions WithProblemTypeUri(string? format)
+    {
+        ResultHttpExtensions.ProblemTypeUriFormat = format;
+        return this;
+    }
+
     internal Func<ErrorDescriptor, bool>? Visibility { get; private set; }
 
     /// <summary>
