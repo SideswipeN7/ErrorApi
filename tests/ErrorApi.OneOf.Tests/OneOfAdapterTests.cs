@@ -173,6 +173,55 @@ public sealed class OneOfMappingTests
                 await Task.FromResult<OneOf.OneOf<Order, OrderNotFound>>(new Order(Guid.Empty)).ToNoContentResult());
         }
     }
+
+    private sealed record F3;
+
+    private sealed record F4;
+
+    private sealed record F5;
+
+    private sealed record F6;
+
+    private sealed record F7;
+
+    [Fact]
+    public void The_whole_arity_ladder_answers()
+    {
+        using (ErrorApiRuntime.Use(BuildMetadata()))
+        {
+            OneOf.OneOf<Order, OrderNotFound, OrderConflict, F3, F4> five = new OrderNotFound(Guid.Empty);
+            Assert.Equal(404, Assert.IsType<ProblemHttpResult>(five.ToHttpResult()).StatusCode);
+
+            OneOf.OneOf<Order, OrderNotFound, OrderConflict, F3, F4, F5> six = new OrderConflict(Guid.Empty);
+            Assert.Equal(409, Assert.IsType<ProblemHttpResult>(six.ToHttpResult()).StatusCode);
+
+            OneOf.OneOf<Order, OrderNotFound, OrderConflict, F3, F4, F5, F6> seven = new OrderNotFound(Guid.Empty);
+            Assert.Equal(404, Assert.IsType<ProblemHttpResult>(seven.ToHttpResult()).StatusCode);
+
+            OneOf.OneOf<Order, OrderNotFound, OrderConflict, F3, F4, F5, F6, F7> eight = new Order(Guid.Empty);
+            Assert.IsType<Ok<Order>>(eight.ToHttpResult());
+
+            // An arm the catalog has never seen still answers - as the honest 500.
+            OneOf.OneOf<Order, OrderNotFound, OrderConflict, F3, F4> unknown = new F4();
+            Assert.Equal(500, Assert.IsType<ProblemHttpResult>(unknown.ToHttpResult()).StatusCode);
+        }
+    }
+
+    [Fact]
+    public void The_created_shapes_answer_on_the_wider_unions_too()
+    {
+        using (ErrorApiRuntime.Use(BuildMetadata()))
+        {
+            OneOf.OneOf<Order, OrderNotFound> ok = new Order(Guid.Empty);
+            Assert.Equal("/fixed", Assert.IsType<Created<Order>>(ok.ToCreated("/fixed")).Location);
+
+            OneOf.OneOf<Order, OrderNotFound, OrderConflict> three = new Order(Guid.Empty);
+            Assert.IsType<Created<Order>>(three.ToCreated(o => $"/orders/{o.Id}"));
+
+            OneOf.OneOf<Order, OrderNotFound, OrderConflict> failed = new OrderNotFound(Guid.Empty);
+            Assert.IsType<ProblemHttpResult>(failed.ToCreated(o => $"/orders/{o.Id}"));
+        }
+    }
 }
 
 public sealed class OneOfCreatedTests

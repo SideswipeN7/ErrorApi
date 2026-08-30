@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# A superseded PR push cancels its own still-running checks; main pushes always run to completion.
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     runs-on: ubuntu-latest

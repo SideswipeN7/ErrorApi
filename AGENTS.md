@@ -18,7 +18,7 @@ that introduces reflection on the request path, is going the wrong way.
 
 ```bash
 dotnet build ErrorApi.slnx                       # must be warning-free
-dotnet test ErrorApi.slnx                        # 277 tests across nine suites
+dotnet test ErrorApi.slnx                        # 300 tests across nine suites
 dotnet run -c Release --project benchmarks/ErrorApi.Benchmarks   # request-path cost, in-process (SAC-safe)
 dotnet test ErrorApi.slnx --collect:"XPlat Code Coverage"        # per-suite cobertura XML (coverlet)
 ERRORAPI_ACCEPT_SNAPSHOTS=1 dotnet test ErrorApi.slnx   # re-approve snapshots, then read the diff
@@ -26,6 +26,12 @@ dotnet run --project samples/Sample.Api          # /swagger, /scalar, /openapi/v
 dotnet run --project samples/Sample.ErrorOr.Api  # and .OneOf. / .LanguageExt. — same API, same contract
 dotnet run --project samples/Sample.Api -- --emit-error-contract out.ts
 ```
+
+CI builds `-c Release -warnaserror`; the `release` workflow (workflow_dispatch, maintainers only)
+is the one road to a version: full build + tests as the gate, then tag, GitHub release and nuget.org
+push (`NUGET_API_KEY` secret required; `dry_run: true` rehearses everything but publishes nothing).
+Branch protection (PR + passing `build` required on `main`) needs a public repo — run
+`.github/enable-branch-protection.ps1` once right after flipping visibility.
 
 CI builds `-c Release -warnaserror`. The sample has `PublishAot=true`, so the trim and AOT analyzers run
 over it during a normal build; an IL2026/IL3050 warning there is a real regression, not noise.
@@ -157,9 +163,8 @@ builds in the same time with `ErrorApiExportReachability` on and off (hot builds
 way) — the shared walker caches keep the export within build noise. Re-measure before optimizing.
 
 Line coverage, measured 2026-08 (merged across all nine suites, generated files excluded; attribute
-classes read via Roslyn sit at 0% by nature): **88% of hand-written src overall** — Generator 94%,
-AspNetCore 84%, adapters 57–100% (OneOf lowest: the 5/6/7-arm overloads are unexecuted),
-Abstractions 60%. Collect with the command above; merge by unioning line hits across the per-suite
+classes read via Roslyn sit at 0% by nature): **89% of hand-written src overall** — Generator 94%,
+AspNetCore 86%, adapters 67–100%, Abstractions 67% (the attribute-class floor). Collect with the command above; merge by unioning line hits across the per-suite
 cobertura files (the `reportgenerator` global tool does not run on this machine's preview SDK).
 
 `GeneratorHarness` (in `ErrorApi.TestKit`) compiles source snippets against the assemblies that test
