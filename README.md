@@ -162,6 +162,19 @@ metadata so the document describes `T`, never the wrapper. The success value ser
 runtime type, which is the one part of ErrorApi native AOT cannot see through — under trimming or
 AOT, prefer the explicit mapping calls.
 
+**Flowing over a result.** `Match` folds to a value; its action-shaped relatives close or thread a
+flow — `Switch` runs exactly one branch, `OnSuccess`/`OnFailure` run a side effect and hand the same
+result back, so they slot into the middle of a chain (all with `Task`/`ValueTask` twins):
+
+```csharp
+service.Pay(id).Switch(order => _log.Paid(order), error => _alerts.Raise(error));
+
+return (await service.PayAsync(id)
+    .OnSuccess(order => _log.Paid(order))
+    .OnFailure(error => _metrics.Bump(error.Code)))
+    .ToHttpResult();
+```
+
 **Old-fashioned controllers work too.** An attribute-routed action is a handler like any other: the
 generator finds the class by its `ControllerBase` ancestry (or `[ApiController]`), reads the route from
 the attributes — `[controller]`/`[action]` tokens, constraints, rooted templates and all — and walks

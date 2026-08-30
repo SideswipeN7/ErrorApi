@@ -357,3 +357,72 @@ public sealed class ContractEmissionTests
         Assert.Throws<InvalidOperationException>(() => options.IncludeFromAssemblies(typeof(string).Assembly));
     }
 }
+
+/// <summary>
+/// The flow helpers: <c>Switch</c> runs exactly one branch and ends the flow;
+/// <c>OnSuccess</c>/<c>OnFailure</c> run a side effect and hand the same result back, so a chain
+/// keeps flowing. Every awaited twin mirrors its synchronous one.
+/// </summary>
+public sealed class ResultFlowTests
+{
+    private static readonly Error NotFound = new("Orders.NotFound", 404);
+
+    [Fact]
+    public void Switch_runs_exactly_one_branch()
+    {
+        var seen = new List<string>();
+
+        Result<int>.Success(7).Switch(v => seen.Add($"ok:{v}"), e => seen.Add($"err:{e.Code}"));
+        Result<int>.Failure(NotFound).Switch(v => seen.Add($"ok:{v}"), e => seen.Add($"err:{e.Code}"));
+        Result.Success().Switch(() => seen.Add("ok"), e => seen.Add($"err:{e.Code}"));
+        Result.Failure(NotFound).Switch(() => seen.Add("ok"), e => seen.Add($"err:{e.Code}"));
+
+        Assert.Equal(["ok:7", "err:Orders.NotFound", "ok", "err:Orders.NotFound"], seen);
+    }
+
+    [Fact]
+    public void OnSuccess_and_OnFailure_fire_on_their_own_arm_and_hand_the_result_back()
+    {
+        var seen = new List<string>();
+
+        var ok = Result<int>.Success(7)
+            .OnSuccess(v => seen.Add($"ok:{v}"))
+            .OnFailure(e => seen.Add($"err:{e.Code}"));
+        Assert.Equal(7, ok.Value);
+
+        var failed = Result<int>.Failure(NotFound)
+            .OnSuccess(v => seen.Add($"ok:{v}"))
+            .OnFailure(e => seen.Add($"err:{e.Code}"));
+        Assert.Equal(NotFound, failed.Error);
+
+        Result.Success().OnSuccess(() => seen.Add("unit-ok")).OnFailure(e => seen.Add("unit-err"));
+        Result.Failure(NotFound).OnSuccess(() => seen.Add("unit-ok2")).OnFailure(e => seen.Add("unit-err"));
+
+        Assert.Equal(["ok:7", "err:Orders.NotFound", "unit-ok", "unit-err"], seen);
+    }
+
+    [Fact]
+    public async Task The_awaited_forms_flow_through_a_whole_chain()
+    {
+        var seen = new List<string>();
+
+        var result = await Task.FromResult(Result<int>.Success(7))
+            .OnSuccess(v => seen.Add($"ok:{v}"))
+            .OnFailure(e => seen.Add("never"));
+        Assert.Equal(7, result.Value);
+
+        await Task.FromResult(Result<int>.Failure(NotFound)).Switch(v => seen.Add("never"), e => seen.Add($"err:{e.Code}"));
+        await Task.FromResult(Result.Failure(NotFound)).OnFailure(e => seen.Add($"unit:{e.Code}"));
+        await Task.FromResult(Result.Success()).OnSuccess(() => seen.Add("unit-ok"));
+        await Task.FromResult(Result.Success()).Switch(() => seen.Add("switch-ok"), e => seen.Add("never"));
+
+        await new ValueTask<Result<int>>(Result<int>.Success(7)).Switch(v => seen.Add($"vt:{v}"), e => seen.Add("never"));
+        Assert.Equal(7, (await new ValueTask<Result<int>>(Result<int>.Success(7)).OnSuccess(v => seen.Add($"vt-on:{v}"))).Value);
+        await new ValueTask<Result<int>>(Result<int>.Failure(NotFound)).OnFailure(e => seen.Add($"vt-err:{e.Code}"));
+        await new ValueTask<Result>(Result.Success()).Switch(() => seen.Add("vt-unit"), e => seen.Add("never"));
+
+        Assert.Equal(
+            ["ok:7", "err:Orders.NotFound", "unit:Orders.NotFound", "unit-ok", "switch-ok", "vt:7", "vt-on:7", "vt-err:Orders.NotFound", "vt-unit"],
+            seen);
+    }
+}
