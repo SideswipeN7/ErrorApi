@@ -98,13 +98,26 @@ this endpoint return?"*. ErrorApi answers exactly that question and leans on the
 
 ## Benchmarks
 
-.NET 10, x64, BenchmarkDotNet — raw `TypedResults` as the floor:
+BenchmarkDotNet, raw `TypedResults` as the floor. One machine (x64, .NET 10):
 
 | | Mean | Allocated |
 | --- | ---: | ---: |
 | Success path (any adapter) vs `TypedResults.Ok` | 4.2–5.9 ns vs 4.5 ns | 24 B vs 24 B |
 | Generated lookups (`FindError`, type switch, route switch) | 2.5–5.8 ns | 0 B |
 | Failure → `application/problem+json` | 60–81 ns | 304–328 B |
+
+And per framework, measured together on one CI runner (Ubuntu 24.04, shared hardware — read as
+relative, not absolute):
+
+| .NET | Success (any adapter) | vs raw `Ok` | Lookups | Failure → problem |
+| --- | ---: | ---: | ---: | ---: |
+| **10** | 5.5–7.3 ns / 24 B | 8.4 ns / 24 B | 2.6–4.4 ns / 0 B | 61–76 ns |
+| **9** | 8.6–11.3 ns / 24 B | 7.9 ns / 24 B | 1.6–4.1 ns / 0 B | 92–130 ns |
+| **8** | 9.1–12.9 ns / 48 B | 7.9 ns / 48 B | 1.8–4.7 ns / 0 B | 65–99 ns (OneOf 202 ns) |
+
+The story holds on every framework the packages ship for: success at the floor's cost (the 48 B on
+net8 is the framework's own `Ok<int>` box, identical for hand-written code), lookups allocation-free.
+CI re-runs all three on every push and keeps the results as per-commit artifacts.
 
 Full tables, methodology and the optimizations the first run bought:
 [docs/performance.md](docs/performance.md) · [benchmarks/](benchmarks/ErrorApi.Benchmarks).

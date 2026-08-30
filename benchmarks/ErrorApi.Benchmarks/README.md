@@ -47,3 +47,27 @@ The initial numbers exposed two real inefficiencies, both fixed and re-measured:
 
 Full run history and charts: the benchmark results page linked from the repository status notes.
 After touching the mapping path, re-run and refresh this table plus README "Performance".
+
+## Per-framework results (CI)
+
+The same suite runs on net8.0, net9.0 and net10.0 on every main push (Ubuntu, shared runner — read
+these as relative numbers; the absolute table above is one dedicated machine). Run `faa7098`:
+
+| Benchmark | net8.0 | net9.0 | net10.0 |
+| --- | ---: | ---: | ---: |
+| `TypedResults.Ok` *(floor)* | 7.9 ns / 48 B | 7.9 ns / 24 B | 8.4 ns / 24 B |
+| `TypedResults.Problem` *(floor)* | 30.8 ns | 49.3 ns | 25.7 ns |
+| `FindError` / type switch / route switch | 1.8–4.7 ns / 0 B | 1.6–4.1 ns / 0 B | 2.6–4.4 ns / 0 B |
+| ErrorApi `Result<T>` success / failure | 11.4 / 65.4 ns | 10.9 / 91.8 ns | 5.9 / 60.8 ns |
+| ErrorOr success / failure | 9.5 / 87.1 ns | 9.6 / 114.0 ns | 5.5 / 63.7 ns |
+| OneOf success / failure | 12.9 / 202.1 ns | 11.3 / 121.5 ns | 6.4 / 67.9 ns |
+| language-ext success / failure | 10.2 / 85.5 ns | 8.8 / 130.4 ns | 6.4 / 71.4 ns |
+| FluentResults success / failure | 10.0 / 89.2 ns | 10.3 / 123.3 ns | 7.3 / 76.0 ns |
+| Ardalis success / failure | 9.1 / 99.3 ns | 8.6 / 126.4 ns | 6.1 / 65.1 ns |
+| CSharpFunctionalExtensions success / failure | 10.1 / 78.9 ns | 9.8 / 104.3 ns | 5.9 / 63.5 ns |
+
+Success allocations equal the floor on every framework (net8''s 48 B is the framework''s own
+`Ok<int>` box); failures allocate 304–336 B. The net8 OneOf failure (202 ns) is the one real
+outlier — the union''s `Match` costs more on the older JIT.
+
+To run one framework locally: `dotnet run -c Release -f net8.0` (from `benchmarks/ErrorApi.Benchmarks`).
