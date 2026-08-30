@@ -33,8 +33,9 @@ push (`NUGET_API_KEY` secret required; `dry_run: true` rehearses everything but 
 Branch protection (PR + passing `build` required on `main`) needs a public repo — run
 `.github/enable-branch-protection.ps1` once right after flipping visibility.
 
-CI builds `-c Release -warnaserror`. The sample has `PublishAot=true`, so the trim and AOT analyzers run
-over it during a normal build; an IL2026/IL3050 warning there is a real regression, not noise.
+The sample has `PublishAot=true`, so the trim and AOT analyzers run over it during a normal build;
+an IL2026/IL3050 warning there is a real regression, not noise.
+
 
 ## Project map
 
