@@ -23,9 +23,14 @@ Every other spec is only as true as whatever enforces it. This spec pins the enf
   (`.github/enable-branch-protection.ps1` — GitHub gates branch protection on visibility).
 - **FR-006** Generator diagnostics ignore `#pragma`; suppression is per-declaration
   (`[SuppressErrorApi]`) or project-wide (`NoWarn`), and every diagnostic is release-tracked.
+- **FR-007** `dotnet add package ErrorApi` MUST be the whole install on every supported TFM. The
+  package is a dependencies-only meta-package (no assembly): `ErrorApi.AspNetCore` everywhere, plus
+  `ErrorApi.Swashbuckle` on net8/net9 where Swagger is the only document road; its README carries
+  the quickstart.
 
 ## Acceptance evidence
 
 `ci` workflow (build + adapters matrix + benchmarks), `release` workflow (dry run validated
 end to end), the coverage numbers and merge method in AGENTS, `AnalyzerReleases.*` shipping the
-EAPI catalog.
+EAPI catalog. For FR-007: the ci Pack job packs the whole solution, and the `ErrorApi.nuspec`
+inside the produced package shows the per-TFM dependency groups and no `lib/` folder.

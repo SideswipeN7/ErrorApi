@@ -24,6 +24,13 @@ producing the identical contract.
 
 ## First steps
 
+One package is the whole install — it brings the generator, the primitives and the ASP.NET Core
+integration (and the Swashbuckle filter on .NET 8/9):
+
+```bash
+dotnet add package ErrorApi
+```
+
 **1. Declare the catalog** — the class declares membership and the default status, the members declare
 the names; nothing else needs typing:
 
@@ -54,9 +61,10 @@ builder.Services.AddErrorApi();          // or AddErrorApi(x => x.AddExceptionHa
 app.MapGet("/orders/{id:guid}", (Guid id, IOrderService s) => s.GetById(id).ToHttpResult());
 ```
 
-On .NET 8/9, or on any project that stays on Swagger, add `ErrorApi.Swashbuckle` and
-`services.AddSwaggerGen(c => c.AddErrorApiResponses());` — the identical responses, built by the same
-shared code.
+On .NET 8/9 the document comes through Swagger — the `ErrorApi` package already carries the filter,
+so `services.AddSwaggerGen(c => c.AddErrorApiResponses());` replaces `AddOpenApi()` and that is all.
+A .NET 10 project that stays on Swagger adds `ErrorApi.Swashbuckle` for the identical responses,
+built by the same shared code.
 
 Already on ErrorOr, OneOf, language-ext, FluentResults, Ardalis.Result or CSharpFunctionalExtensions?
 Take the matching adapter package and keep your types — often a bare `[Error]` on what you already

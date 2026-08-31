@@ -4,6 +4,19 @@ The full integration story: the quickstart in detail, the exception style, and f
 
 ## Quickstart
 
+**0. Install.** One package carries everything the app project needs:
+
+```bash
+dotnet add package ErrorApi
+```
+
+`ErrorApi` is a meta-package — dependencies only. It pulls `ErrorApi.AspNetCore` (the integration,
+shipping the source generator and the `Error`/`Result` primitives from `ErrorApi.Abstractions`), and
+on .NET 8/9 also `ErrorApi.Swashbuckle`, because there the document has to come through Swagger. Two
+cases reach past it: a class library that only *declares* catalog entries references
+`ErrorApi.Abstractions` alone, and a project already on ErrorOr, OneOf, language-ext, FluentResults,
+Ardalis.Result or CSharpFunctionalExtensions adds its [adapter package](adapters.md) beside it.
+
 **1. Declare the catalog.** Partial members; the generator writes the bodies.
 
 ```csharp
@@ -19,6 +32,9 @@ public static partial class OrderErrors
     public static partial Error AlreadyPaid(Guid orderId);
 }
 ```
+
+Partial *properties* are a C# 13 feature — on net8/net9 set `<LangVersion>latest</LangVersion>`, or
+declare the entry as a partial method instead.
 
 The attribute carries the status and nothing else it does not have to: `NotFound` becomes the code
 `Orders.NotFound` and the title `Not found`. [Codes you do not have to type](catalog.md#codes-you-do-not-have-to-type)

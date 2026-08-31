@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <PackageId>ErrorApi</PackageId>
+    <Description>The one-package start for ErrorApi: the source generator, the Error/Result primitives and the ASP.NET Core integration in a single install — plus the Swashbuckle filter on .NET 8/9, where the built-in OpenAPI pipeline cannot carry the transformer. Add this package, declare a catalog, call AddErrorApi(). Reach for the individual ErrorApi.* packages only when composing a custom setup.</Description>
+    <!-- A meta-package: dependencies only, no assembly of its own. NU5128 warns that the dependency
+         groups have no matching lib/ folders, which here is the whole point. -->
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- PrivateAssets="none" so the source generator and the buildTransitive props still reach the
+         app that references only this package; NuGet's default strips analyzers and build assets
+         out of a transitive dependency. -->
+    <ProjectReference Include="..\ErrorApi.AspNetCore\ErrorApi.AspNetCore.csproj" PrivateAssets="none" />
+    <!-- On net8/net9 the ErrorApi document can only come from Swashbuckle (see ErrorApi.AspNetCore's
+         transformer note), so the Swagger road ships in-box there. net10 documents through the
+         built-in pipeline and stays free of the Swashbuckle dependency. -->
+    <ProjectReference Include="..\ErrorApi.Swashbuckle\ErrorApi.Swashbuckle.csproj" PrivateAssets="none"
+                      Condition="'$(TargetFramework)' != 'net10.0'" />
+  </ItemGroup>
+
+</Project>

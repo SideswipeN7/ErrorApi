@@ -41,6 +41,7 @@ an IL2026/IL3050 warning there is a real regression, not noise.
 
 | Project | TFM | Holds |
 | --- | --- | --- |
+| `src/ErrorApi` | `net8.0;net9.0;net10.0` | the nuget.org front door: a dependencies-only meta-package (no assembly) over `ErrorApi.AspNetCore`, plus `ErrorApi.Swashbuckle` on net8/net9 where Swagger is the only document road. Its README is the quickstart a searcher lands on |
 | `src/ErrorApi.Abstractions` | `netstandard2.0;net8.0;net10.0` | `Error`, `Result`/`Result<T>`, `[Error]`, `[ProducesError]`, `ErrorDescriptor`, `IErrorApiMetadata`, `RoutePattern`, `ErrorApiRuntime` |
 | `src/ErrorApi.Generator` | `netstandard2.0` | the generator: parsing, the call-graph walk, the emitters |
 | `src/ErrorApi.AspNetCore` | `net8.0;net9.0;net10.0` | `ToHttpResult()`, the OpenAPI transformer (**net10 only** — it writes Microsoft.OpenApi 2.x; net8/net9 documents come from ErrorApi.Swashbuckle), the TypeScript writer, `AddErrorApi()`'s target |

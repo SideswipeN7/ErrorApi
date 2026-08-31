@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/ErrorApi/ErrorApi.csproj" />
     <Project Path="src/ErrorApi.Abstractions/ErrorApi.Abstractions.csproj" />
     <Project Path="src/ErrorApi.AspNetCore/ErrorApi.AspNetCore.csproj" />
     <Project Path="src/ErrorApi.Generator/ErrorApi.Generator.csproj" />
