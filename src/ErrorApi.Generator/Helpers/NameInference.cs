@@ -95,6 +95,19 @@ internal static class NameInference
             return declared;
         }
 
+        if (attribute is not null)
+        {
+            // The property form, [Error(409, Code = "VersionFail")] — the same explicit code, the
+            // catalog parser reads it the same way.
+            foreach (var named in attribute.NamedArguments)
+            {
+                if (named.Key == "Code" && named.Value.Value is string property)
+                {
+                    return property;
+                }
+            }
+        }
+
         // A referenced catalog resolved its body-inferred codes when it was compiled and exported the
         // result; reading that back is the only way this compilation can agree with what is on the wire.
         if (!SymbolEqualityComparer.Default.Equals(symbol.ContainingAssembly, compilation.Assembly)

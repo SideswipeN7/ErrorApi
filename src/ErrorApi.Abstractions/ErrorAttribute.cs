@@ -76,9 +76,11 @@ public sealed class ErrorAttribute : Attribute
 
     /// <summary>
     /// Stable machine-readable code, e.g. <c>Orders.NotFound</c>, or <see langword="null"/> when it is
-    /// left to the generator to infer.
+    /// left to the generator to infer. Settable, so <c>[Error(409, Code = "VersionFail")]</c> reads the
+    /// same as <c>[Error("VersionFail", 409)]</c>; either way the value is taken verbatim, without the
+    /// catalog prefix.
     /// </summary>
-    public string? Code { get; }
+    public string? Code { get; set; }
 
     /// <summary>HTTP status code this error maps to.</summary>
     public int StatusCode { get; }

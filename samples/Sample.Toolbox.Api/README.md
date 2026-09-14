@@ -37,7 +37,8 @@ public static partial class FlagErrors
    consumer names the layers it trusts the contract to come from.
 3. `AddErrorApi(x => x.Include(...))` — so a failure whose **type** is declared in the library resolves
    by instance in this process.
-4. `x.AddExceptionHandler()` inside the `AddErrorApi` lambda + `app.UseExceptionHandler()` for the thrown 504.
+4. `x.HandleExceptions(h => h.MapUnhandledException())` inside the `AddErrorApi` lambda +
+   `app.UseExceptionHandler()` — for the thrown 504, and so that nothing else escapes as a bare 500.
 5. Endpoints; `app.MapOpenApi(); app.MapErrorContract();`
 
 ## What Swagger shows
@@ -47,6 +48,7 @@ public static partial class FlagErrors
 - `POST /customers/{id}/promote` → failures of a handler this compilation cannot see.
 - `GET /gateway/ping` → **504** declared by exception type; `GET /flags/{name}` → **403**/**423** from
   the attribute-free catalog.
+- every operation → **500** `Server.Unhandled`: the documented fallback, on the wire and in `errors.ts`.
 
 ```bash
 dotnet run --project samples/Sample.Toolbox.Api

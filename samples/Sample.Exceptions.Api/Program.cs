@@ -12,8 +12,9 @@ builder.Services.AddErrorApi();
 
 // Answers a thrown, annotated exception with the problem document its endpoint was documented with.
 // Kept separate from AddErrorApi() on purpose: taking over exception handling is an explicit decision.
-// The messages here are composed for clients, so putting them in `detail` is a deliberate opt-in.
-builder.Services.AddErrorApiExceptionHandler(o => o.UseExceptionMessageAsDetail = true);
+// The messages here are composed for clients and land in `detail` — the default for annotated types;
+// `o.UseExceptionMessageAsDetail = false` keeps them off the wire.
+builder.Services.AddErrorApiExceptionHandler();
 
 builder.Services.AddSingleton<IOrderService, InMemoryOrderService>();
 

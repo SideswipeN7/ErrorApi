@@ -20,6 +20,12 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
 {
     private const string MetadataInterfaceName = "ErrorApi.IErrorApiMetadata";
     private const string RegistrationTypeName = "ErrorApi.AspNetCore.ErrorApiRegistration";
+    private const string ExceptionOptionsTypeName = "ErrorApi.AspNetCore.ErrorApiExceptionOptions";
+    private const string HandlingBuilderTypeName = "ErrorApi.AspNetCore.ExceptionHandlingBuilder";
+    private const string OptionsTypeName = "ErrorApi.AspNetCore.ErrorApiOptions";
+    private const string FallbackMethodName = "MapUnhandledException";
+    private const string HandlingMethodName = "HandleExceptions";
+    private const string AddHandlerMethodName = "Add";
 
     /// <summary>The tracking name of the model stage, so tests can watch it cache.</summary>
     public const string ModelStepName = "ErrorApi.Model";
@@ -53,7 +59,29 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
                 static (ctx, _) => (InvocationExpressionSyntax)ctx.Node)
             .Collect();
 
+        // The unhandled-exception fallback: MapUnhandledException(ApiErrors.Failed) inside the options
+        // lambda. Its argument is a catalog read like any other, and the entry is reachable from every
+        // endpoint by definition — so it is resolved here and documented everywhere, at compile time.
+        var fallbackCalls = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                static (node, _) => node is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax member }
+                                    && member.Name.Identifier.ValueText == FallbackMethodName,
+                static (ctx, _) => (InvocationExpressionSyntax)ctx.Node)
+            .Collect();
+
+        // The global handlers: HandleExceptions(h => h.Add<SqlHandler>().Add(e => ...)). Each handler is
+        // reachable from every endpoint too, so its Map method — or the lambda — is walked like a handler
+        // and what it reads lands on every contract.
+        var handlingCalls = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                static (node, _) => node is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax member }
+                                    && member.Name.Identifier.ValueText == HandlingMethodName,
+                static (ctx, _) => (InvocationExpressionSyntax)ctx.Node)
+            .Collect();
+
         var input = context.CompilationProvider.Combine(catalog).Combine(implicitCatalog).Combine(mapCalls)
+            .Combine(fallbackCalls)
+            .Combine(handlingCalls)
             .Combine(context.AnalyzerConfigOptionsProvider);
 
         // The walk has to see the whole compilation, so it re-runs on every edit — but it funnels into
@@ -61,8 +89,10 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
         // the emit step cached: no re-added sources, no re-parsed generated files in the IDE.
         var model = input.Select(static (data, cancellationToken) =>
                 Build(
-                    data.Left.Left.Left.Left,
-                    data.Left.Left.Left.Right.AddRange(data.Left.Left.Right),
+                    data.Left.Left.Left.Left.Left.Left,
+                    data.Left.Left.Left.Left.Left.Right.AddRange(data.Left.Left.Left.Left.Right),
+                    data.Left.Left.Left.Right,
+                    data.Left.Left.Right,
                     data.Left.Right,
                     data.Right,
                     cancellationToken))
@@ -75,6 +105,8 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
         Compilation compilation,
         ImmutableArray<ParsedCatalogEntry> parsed,
         ImmutableArray<InvocationExpressionSyntax> mapCalls,
+        ImmutableArray<InvocationExpressionSyntax> fallbackCalls,
+        ImmutableArray<InvocationExpressionSyntax> handlingCalls,
         AnalyzerConfigOptionsProvider configuration,
         System.Threading.CancellationToken cancellationToken)
     {
@@ -103,14 +135,20 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
             ForeignAssemblyFilter = IncludeAssemblies(configuration),
         };
 
+        // Resolved before the scan so the walker registers what the fallback and the global handlers
+        // reach as discovered alongside everything the scan finds; appended after it so every contract
+        // carries them, EAPI010 included.
+        var globalCodes = ResolveGlobalErrors(compilation, fallbackCalls, handlingCalls, walker, diagnostics, cancellationToken);
+
         var scan = EndpointScanner.Scan(compilation, mapCalls, configuration, walker, diagnostics, cancellationToken);
+        var endpoints = globalCodes.Count == 0 ? scan.Endpoints : AppendToEvery(scan.Endpoints, globalCodes);
         var errors = MergeErrors(entries, scan.DiscoveredErrors);
-        ReportUnknownCodes(scan.Endpoints, errors, diagnostics);
-        ReportUnreachableErrors(entries, scan.Endpoints, diagnostics);
+        ReportUnknownCodes(endpoints, errors, diagnostics);
+        ReportUnreachableErrors(entries, endpoints, diagnostics);
 
         // A compilation with no endpoints is a library: its walk starts at its own public surface, and
         // the result is baked in for the compilation that has the endpoints to read back.
-        var reachability = ExportsReachability(configuration, compilation, hasEndpoints: scan.Endpoints.Count > 0)
+        var reachability = ExportsReachability(configuration, compilation, hasEndpoints: endpoints.Count > 0)
             ? ReachabilityExporter.Compute(walker, compilation, diagnostics, cancellationToken)
             : new List<ReachabilityExport>();
 
@@ -119,11 +157,157 @@ public sealed class ErrorApiGenerator : IIncrementalGenerator
             HasRegistrationType: compilation.GetTypeByMetadataName(RegistrationTypeName) is not null,
             Entries: entries.ToEquatableArray(),
             Errors: errors.ToEquatableArray(),
-            Endpoints: scan.Endpoints.ToEquatableArray(),
+            Endpoints: endpoints.ToEquatableArray(),
             Diagnostics: diagnostics.ToEquatableArray(),
             Reachability: reachability.ToEquatableArray(),
             AssemblyName: compilation.AssemblyName ?? string.Empty);
     }
+
+    /// <summary>
+    /// Resolves what the exception pipeline can answer with beyond the catalog: the
+    /// <c>MapUnhandledException(...)</c> fallback and the global handlers of every
+    /// <c>HandleExceptions(h =&gt; ...)</c> block. Both are reachable from every endpoint by definition,
+    /// so the codes come back as one set the caller puts on every contract. A fallback argument that
+    /// is not a catalog read — a value built at runtime — answers on the wire but cannot be documented,
+    /// which is <c>EAPI014</c>.
+    /// </summary>
+    private static SortedSet<string> ResolveGlobalErrors(
+        Compilation compilation,
+        ImmutableArray<InvocationExpressionSyntax> fallbackCalls,
+        ImmutableArray<InvocationExpressionSyntax> handlingCalls,
+        ErrorReachabilityWalker walker,
+        List<DiagnosticInfo> diagnostics,
+        System.Threading.CancellationToken cancellationToken)
+    {
+        var codes = new SortedSet<string>(System.StringComparer.Ordinal);
+
+        if (compilation.GetTypeByMetadataName(ExceptionOptionsTypeName) is not { } exceptionOptionsType)
+        {
+            // ErrorApi.AspNetCore is not referenced: there is no exception pipeline to configure.
+            return codes;
+        }
+
+        var builderType = compilation.GetTypeByMetadataName(HandlingBuilderTypeName);
+        var optionsType = compilation.GetTypeByMetadataName(OptionsTypeName);
+
+        foreach (var call in handlingCalls)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (call.ArgumentList.Arguments.Count != 1
+                || call.ArgumentList.Arguments[0].Expression is not AnonymousFunctionExpressionSyntax block)
+            {
+                continue;
+            }
+
+            var model = compilation.GetSemanticModel(call.SyntaxTree);
+            if (IsSomeoneElses(model, call, optionsType, cancellationToken))
+            {
+                continue;
+            }
+
+            // Every h.Add(...) inside the block. Its receiver is the block's lambda parameter, typeless
+            // while the generator runs (see below), so the calls are matched by shape: a handler type
+            // argument, or a lambda.
+            foreach (var add in block.DescendantNodes().OfType<InvocationExpressionSyntax>())
+            {
+                if (add.Expression is not MemberAccessExpressionSyntax { Name: var name }
+                    || name.Identifier.ValueText != AddHandlerMethodName
+                    || IsSomeoneElses(model, add, builderType, cancellationToken))
+                {
+                    continue;
+                }
+
+                if (name is GenericNameSyntax { TypeArgumentList.Arguments: { Count: 1 or 2 } typeArguments })
+                {
+                    // Add<THandler>() or Add<TException, THandler>(): the handler is the last argument,
+                    // and every Map it declares is walked like an endpoint handler.
+                    if (model.GetTypeInfo(typeArguments[typeArguments.Count - 1], cancellationToken).Type is INamedTypeSymbol handlerType)
+                    {
+                        foreach (var map in handlerType.GetMembers("Map").OfType<IMethodSymbol>())
+                        {
+                            codes.UnionWith(walker.CollectFromMethod(map).Codes);
+                        }
+                    }
+                }
+                else if (add.ArgumentList.Arguments.Count == 1
+                         && add.ArgumentList.Arguments[0].Expression is AnonymousFunctionExpressionSyntax lambda)
+                {
+                    codes.UnionWith(walker.Collect(lambda, model).Codes);
+                }
+            }
+        }
+
+        foreach (var call in fallbackCalls)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var model = compilation.GetSemanticModel(call.SyntaxTree);
+            if (IsSomeoneElses(model, call, exceptionOptionsType, cancellationToken)
+                && IsSomeoneElses(model, call, builderType, cancellationToken))
+            {
+                continue;
+            }
+
+            switch (call.ArgumentList.Arguments.Count)
+            {
+                case 0:
+                    // The built-in default: the same constants the runtime answers with, from one
+                    // linked source — so the document and the wire agree by construction.
+                    walker.Discovered.TryAdd(Shared.UnhandledDefaults.Code, new DiscoveredError(
+                        Shared.UnhandledDefaults.Code,
+                        Shared.UnhandledDefaults.StatusCode,
+                        Shared.UnhandledDefaults.Title,
+                        null,
+                        Shared.UnhandledDefaults.Description,
+                        Shared.UnhandledDefaults.DeclaringMember));
+                    codes.Add(Shared.UnhandledDefaults.Code);
+                    break;
+
+                case 1:
+                    var argument = call.ArgumentList.Arguments[0].Expression;
+                    if (walker.TryResolveErrorCode(argument, model, out var code))
+                    {
+                        codes.Add(code!);
+                    }
+                    else
+                    {
+                        diagnostics.Add(DiagnosticInfo.Create(Diagnostics.UnresolvedFallback, argument));
+                    }
+
+                    break;
+            }
+        }
+
+        return codes;
+    }
+
+    /// <summary>
+    /// Whether an invocation is bound to a method of some type other than <paramref name="ours"/>.
+    /// Bound to nothing at all is the expected case, not a failure: these calls sit inside
+    /// <c>AddErrorApi(x =&gt; ...)</c>, an overload this generator itself emits, so while the generator
+    /// runs the receiver has no type yet — and the arguments (catalog reads, type names, lambdas) bind
+    /// on their own regardless.
+    /// </summary>
+    private static bool IsSomeoneElses(
+        SemanticModel model, InvocationExpressionSyntax call, INamedTypeSymbol? ours, System.Threading.CancellationToken cancellationToken)
+    {
+        var info = model.GetSymbolInfo(call, cancellationToken);
+        var bound = info.Symbol as IMethodSymbol ?? info.CandidateSymbols.OfType<IMethodSymbol>().FirstOrDefault();
+
+        return bound is not null && !SymbolEqualityComparer.Default.Equals(bound.ContainingType, ours);
+    }
+
+    /// <summary>Puts the global codes on every endpoint: a fallback or a global handler is reachable from everywhere by definition.</summary>
+    private static IReadOnlyList<EndpointModel> AppendToEvery(IReadOnlyList<EndpointModel> endpoints, SortedSet<string> codes) =>
+        endpoints
+            .Select(endpoint =>
+            {
+                var union = new SortedSet<string>(endpoint.ErrorCodes, System.StringComparer.Ordinal);
+                union.UnionWith(codes);
+                return endpoint with { ErrorCodes = new EquatableArray<string>(union.ToImmutableArray()) };
+            })
+            .ToList();
 
     /// <summary>
     /// Whether this compilation exports its reachability. On by default for a compilation with no

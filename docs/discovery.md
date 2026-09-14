@@ -211,10 +211,14 @@ catalog listing and the TS contract. Both are **documentation decisions only**: 
 resolves at runtime and endpoints answer exactly as before, so flipping them per environment can never
 change behaviour. Several filters compose; an entry must pass all of them.
 
-`x.AddExceptionHandler(...)` is the lambda form of `AddErrorApiExceptionHandler()`, so one
+`x.HandleExceptions(h => ...)` is the block form of `AddErrorApiExceptionHandler()`, so one
 `AddErrorApi(x => ...)` call configures everything — still explicit, never a side effect. The
 pipeline half stays yours: `app.UseExceptionHandler();` (with `AddProblemDetails()` registered) is
-what makes the handler run.
+what makes the handler run. Inside the block, `h.Add<...>()` handlers and
+`h.MapUnhandledException(...)` answer what the catalog does not know — and because the generator
+walks the handlers' `Map` methods and reads the fallback's argument, what they return is documented
+on every operation; see
+[getting-started.md](getting-started.md#failures-the-catalog-cannot-see).
 
 A referenced assembly that does **not** run the generator has nothing to export, and stays a boundary —
 `EAPI009` names it, `[ProducesError]` covers it. The library side has the same guard one boundary

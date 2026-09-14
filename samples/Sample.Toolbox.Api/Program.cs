@@ -16,12 +16,14 @@ builder.Services.AddProblemDetails();
 // The composable form: this API's own model first, plus the shared library's — every generator-run
 // assembly exposes its model as <AssemblyName>.ErrorApiModel.Metadata. The include is what lets a
 // failure whose TYPE is declared in the library resolve by instance in this process, because the
-// pattern switch that knows the type is the one generated over there. AddExceptionHandler is the
-// lambda form of AddErrorApiExceptionHandler — TimeoutException is thrown, not returned, and the
-// handler answers it with the documented problem shape.
+// pattern switch that knows the type is the one generated over there. HandleExceptions is the
+// block form of AddErrorApiExceptionHandler — TimeoutException is thrown, not returned, and the
+// handler answers it with the documented problem shape. MapUnhandledException() answers whatever
+// the catalog does not know with the built-in Server.Unhandled instead of a bare 500 — and because
+// a fallback is reachable from everywhere, the generator documents it on every operation.
 builder.Services.AddErrorApi(x => x
     .Include(Sample.Shared.Errors.ErrorApiModel.Metadata)
-    .AddExceptionHandler());
+    .HandleExceptions(h => h.MapUnhandledException()));
 
 builder.Services.AddSingleton<ICustomerService, CustomerService>();
 builder.Services.AddSingleton<PromoteCustomerHandler>();

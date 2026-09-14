@@ -56,9 +56,18 @@ public Result<Order> GetById(Guid id) =>
 
 ```csharp
 builder.Services.AddOpenApi();
-builder.Services.AddErrorApi();          // or AddErrorApi(x => x.AddExceptionHandler().Include(...))
+builder.Services.AddErrorApi();          // or AddErrorApi(x => x.HandleExceptions().Include(...))
 
 app.MapGet("/orders/{id:guid}", (Guid id, IOrderService s) => s.GetById(id).ToHttpResult());
+```
+
+Throwing instead of returning? `[Error(404)]` on the exception class is the whole catalog entry, and the
+same lambda says what happens to everything the catalog cannot see — in the order it happens:
+
+```csharp
+builder.Services.AddErrorApi(x => x.HandleExceptions(h => h
+    .Add<SqlException, SqlExceptionHandler>()   // map a foreign failure by what the instance carries
+    .MapUnhandledException()));                 // nothing escapes as a bare 500 — and both are documented
 ```
 
 On .NET 8/9 the document comes through Swagger — the `ErrorApi` package already carries the filter,
@@ -79,7 +88,7 @@ wrote is the entire onboarding. See [docs/adapters.md](docs/adapters.md) and
    **walks each handler through the call graph**: into interfaces and their implementations, past
    mediators via the message type, into pipeline behaviours, and across assembly boundaries through
    baked-in exports.
-3. What it cannot see, it says out loud: thirteen `EAPI` diagnostics report stopped walks, drifting
+3. What it cannot see, it says out loud: fourteen `EAPI` diagnostics report stopped walks, drifting
    codes and unreachable entries at build time, instead of letting the contract lie.
 4. It emits a reflection-free model — switch statements, no runtime scan — that one OpenAPI
    transformer (or the Swashbuckle filter) and a TypeScript writer render from.

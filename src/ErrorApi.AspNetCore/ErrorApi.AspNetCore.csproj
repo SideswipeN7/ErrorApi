@@ -43,6 +43,7 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\SharedNormalization.cs" Link="Shared\SharedNormalization.cs" />
+    <Compile Include="..\Shared\UnhandledDefaults.cs" Link="Shared\UnhandledDefaults.cs" />
     <!-- The response builder writes to Microsoft.OpenApi 2.x, present here only on net10. -->
     <Compile Include="..\Shared\ErrorResponseBuilder.cs" Link="Shared\ErrorResponseBuilder.cs"
              Condition="'$(TargetFramework)' == 'net10.0'" />
