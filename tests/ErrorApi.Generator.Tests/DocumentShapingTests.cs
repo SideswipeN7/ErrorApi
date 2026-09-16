@@ -139,7 +139,7 @@ public sealed class ResultFilterTests
 }
 
 /// <summary>
-/// <c>AddErrorApi(x =&gt; x.AddExceptionHandler(...))</c>: the lambda form of
+/// <c>AddErrorApi(x =&gt; x.HandleExceptions(...))</c>: the block form of
 /// <c>AddErrorApiExceptionHandler()</c>, so one call configures everything — still explicit,
 /// never a side effect.
 /// </summary>
@@ -147,7 +147,7 @@ public sealed class ResultFilterTests
 public sealed class ExceptionHandlerOptionTests
 {
     [Fact]
-    public void The_option_registers_the_handler_and_applies_the_tuning()
+    public void The_block_registers_the_handler_and_applies_the_tuning()
     {
         var services = new ServiceCollection();
 
@@ -156,7 +156,7 @@ public sealed class ExceptionHandlerOptionTests
             ErrorApiRegistration.Register(
                 services,
                 new FakeMetadata(),
-                x => x.AddExceptionHandler(o => o.UseExceptionMessageAsDetail = true));
+                x => x.HandleExceptions(h => h.UseExceptionMessageAsDetail(false)));
         }
 
         var provider = services.BuildServiceProvider();
@@ -164,7 +164,8 @@ public sealed class ExceptionHandlerOptionTests
         Assert.Contains(
             provider.GetServices<Microsoft.AspNetCore.Diagnostics.IExceptionHandler>(),
             handler => handler is ErrorApiExceptionHandler);
-        Assert.True(provider
+        // On by default; the block turned it off.
+        Assert.False(provider
             .GetRequiredService<Microsoft.Extensions.Options.IOptions<ErrorApiExceptionOptions>>()
             .Value.UseExceptionMessageAsDetail);
     }

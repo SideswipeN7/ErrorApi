@@ -23,11 +23,19 @@ renders it.
 - **FR-005** Documentation MUST be shapeable without touching behaviour:
   `ErrorCodeDescriptionEnabled(false)` strips prose, `FilterErrorCodes`/`HideErrorCodes` hide
   entries — runtime lookups (`FindError`, `FindErrorForInstance`) pass through untouched.
+- **FR-006** The unhandled-exception fallback (`MapUnhandledException(ApiErrors.Failed)`) MUST be
+  resolved at compile time and listed on every operation and in the TypeScript contract, with
+  `EAPI010` silent about it; an argument the generator cannot resolve to a catalog entry MUST
+  report `EAPI014` rather than be silently undocumented. The global handlers of a
+  `HandleExceptions` block MUST be treated the same way: each handler's `Map` (or the lambda) is
+  walked, and what it reads is listed on every operation.
 
 ## Acceptance evidence
 
 `SwashbuckleFilterTests`, `DocumentShapingTests`, transformer coverage via twelve samples booted in
-CI asserting live `/openapi/v1.json` content, group resolution in `EndpointGroupTests`.
+CI asserting live `/openapi/v1.json` content, group resolution in `EndpointGroupTests`,
+`UnhandledExceptionTests` for the fallback on every endpoint, `GlobalExceptionHandlerDiscoveryTests`
+for the handlers.
 
 ## Out of scope
 

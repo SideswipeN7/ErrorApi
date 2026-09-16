@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\SharedNormalization.cs" Link="Shared\SharedNormalization.cs" />
+    <Compile Include="..\Shared\UnhandledDefaults.cs" Link="Shared\UnhandledDefaults.cs" />
   </ItemGroup>
 
 </Project>

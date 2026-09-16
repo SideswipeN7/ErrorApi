@@ -38,12 +38,15 @@ declaration at compile time.
   report `EAPI010`; `[SuppressErrorApi("id")]` MUST silence exactly that rule on that declaration.
 - **FR-007** Codes, statuses and titles resolved from source (bodies, base constructors) MUST be
   baked into the assembly (`CatalogExport`) so consumers re-derive the identical resolution.
+- **FR-008** The explicit code MUST be accepted as a named property too — `[Error(409, Code = "X")]`
+  reads exactly as `[Error("X", 409)]` — by the catalog parser and by the walker alike, verbatim.
 
 ## Acceptance evidence
 
 `CatalogDefaultsTests` (defaults, implicit membership, base-ctor inference incl. the
 mis-inference guard, cross-assembly export round-trip, EAPI003/EAPI013), `ContractAndMappingTests`,
-snapshot suites over generated catalogs, `EAPI*` assertions across `ErrorApi.Generator.Tests`.
+`CodePropertyTests`, snapshot suites over generated catalogs, `EAPI*` assertions across
+`ErrorApi.Generator.Tests`.
 
 ## Out of scope
 

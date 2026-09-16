@@ -115,6 +115,11 @@ public sealed class ToolboxSampleTests(WebApplicationFactory<ToolboxApi::Program
         var ping = parsed.RootElement.GetProperty("paths").GetProperty("/gateway/ping").GetProperty("get").GetProperty("responses");
         Assert.True(ping.TryGetProperty("504", out _));
 
+        // The MapUnhandledException() fallback is reachable from everywhere, so it is documented everywhere.
+        Assert.True(ping.TryGetProperty("500", out _));
+        Assert.True(customer.TryGetProperty("500", out _));
+        Assert.Contains("Server.Unhandled", document, StringComparison.Ordinal);
+
         // The body-inferred wire code crossed the boundary — not a name-derived guess.
         Assert.Contains("Very.Old.Retired", document, StringComparison.Ordinal);
     }

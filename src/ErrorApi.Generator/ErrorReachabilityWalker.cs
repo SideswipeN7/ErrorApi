@@ -740,6 +740,26 @@ internal sealed class ErrorReachabilityWalker
     private bool TryGetMappedCode(ITypeSymbol type, out string? code) =>
         MappedTypes.TryGetValue(type.OriginalDefinition.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), out code);
 
+    /// <summary>
+    /// Resolves an expression that should denote one catalog entry — <c>ApiErrors.Failed</c>, a
+    /// property, field or method read — to its code, registering the entry as discovered. This is how
+    /// the unhandled-exception fallback in <c>AddErrorApi(x =&gt; ...)</c> is tied to the catalog at
+    /// compile time rather than trusted at runtime.
+    /// </summary>
+    public bool TryResolveErrorCode(ExpressionSyntax expression, SemanticModel model, out string? code)
+    {
+        // A property, field or ordinary method read; `new Error(...)` binds to a constructor and is
+        // exactly the runtime-built value that cannot be documented.
+        if (model.GetSymbolInfo(expression).Symbol is { } symbol
+            && symbol is IPropertySymbol or IFieldSymbol or IMethodSymbol { MethodKind: MethodKind.Ordinary })
+        {
+            return TryGetErrorCode(symbol, out code);
+        }
+
+        code = null;
+        return false;
+    }
+
     private bool TryGetErrorCode(ISymbol symbol, out string? code)
     {
         if (TryBuildDescriptor(symbol.OriginalDefinition, out var descriptor))

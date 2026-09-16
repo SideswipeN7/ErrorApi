@@ -149,6 +149,9 @@ internal static class CatalogParser
             var value = named.Value.Value as string;
             switch (named.Key)
             {
+                // [Error(409, Code = "VersionFail")]: the property form of the explicit code. Verbatim,
+                // like the positional one — explicit means explicit, no catalog prefix.
+                case "Code": declaredCode = value ?? declaredCode; break;
                 case "Title": title = value; break;
                 case "Detail": detail = value; break;
                 case "Description": description = value; break;

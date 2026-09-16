@@ -158,8 +158,7 @@ For the response, register the handler. It is deliberately not part of `AddError
 application's exception handling is not something a call by that name should do behind your back.
 
 ```csharp
-builder.Services.AddErrorApi();
-builder.Services.AddErrorApiExceptionHandler(o => o.UseExceptionMessageAsDetail = true);
+builder.Services.AddErrorApi(x => x.HandleExceptions());   // or AddErrorApiExceptionHandler() beside AddErrorApi()
 
 var app = builder.Build();
 app.UseExceptionHandler();
@@ -170,10 +169,85 @@ app.UseExceptionHandler();
 ```
 
 The body comes from the same `Error.ToProblem()` the result path uses, so a client cannot tell which
-style the server was written in. An exception the catalog does not know is left untouched, so whatever
-handled it before still does. `Exception.Message` stays off the wire unless you opt in with
-`AddErrorApiExceptionHandler(o => o.UseExceptionMessageAsDetail = true)` — messages are written for
-operators, and the entry's `Detail` is the documented place for client-facing text.
+style the server was written in. The annotated exception's `Message` becomes `detail` when the entry
+carries none — a type you annotated is one whose message you wrote. Turn that off with
+`h.UseExceptionMessageAsDetail(false)` when your messages quote things a client should not see; the
+entry's `Detail` always wins and is the documented place for client-facing text. An exception the
+catalog does not know is, so far, left untouched — the next two sections say what else can happen to it.
+
+### Failures the catalog cannot see
+
+`[Error]` needs a declaration and `ErrorMapping` needs a type. A failure that is only recognisable by
+what the instance carries — a driver's error number, the status on a client exception — needs code,
+and that code is a **global handler**. The `HandleExceptions` block says what happens to a thrown
+exception, in the order it happens: the catalog first, then the handlers as added, then the fallback.
+
+```csharp
+public sealed class SqlExceptionHandler(ILogger<SqlExceptionHandler> log) : IGlobalExceptionHandler<SqlException>
+{
+    public Error Map(SqlException e) => e.Number switch
+    {
+        2627 or 2601 => DbErrors.Duplicate,      // catalog entries, so they are in the contract
+        -2 => DbErrors.Timeout,
+        _ => Error.None,                         // pass it on to the next handler, or the fallback
+    };
+}
+
+builder.Services.AddErrorApi(x => x.HandleExceptions(h => h
+    .Add<SqlException, SqlExceptionHandler>()                                   // typed: only SqlException reaches it
+    .Add(e => e is OperationCanceledException ? ApiErrors.Cancelled : Error.None)   // the one-line form
+    .MapUnhandledException()));
+```
+
+Three forms: `Add<TException, THandler>()` for a class that sees one exception type (derived types
+included), `Add<THandler>()` for a class implementing the non-generic `IGlobalExceptionHandler` that
+sees them all, and `Add(lambda)` for a rule with no dependencies. Handler classes are singletons with
+constructor injection. The first handler to answer with something other than `Error.None` decides; an
+annotated exception never reaches a handler at all.
+
+The handlers are documented. A global handler is reachable from every endpoint by definition, so the
+generator walks each handler's `Map` — and each lambda — exactly as it walks an endpoint handler, and
+lists what it reads on every operation and in the TypeScript contract. That is why the rule is to
+return catalog entries: a value built inside `Map` still answers, but nothing documents it.
+
+### Nothing escapes as a bare 500
+
+What the catalog and every handler passed on is normally left alone. When the API must never answer
+with an undocumented 500, end the block with a fallback:
+
+```csharp
+builder.Services.AddErrorApi(x => x.HandleExceptions(h => h.MapUnhandledException()));
+```
+
+```json
+{ "title": "Unexpected server error", "status": 500, "code": "Server.Unhandled", "traceId": "00-…" }
+```
+
+That is the built-in entry; the generator and the runtime compile the same constants, so the two
+cannot disagree. An API with wording of its own passes a catalog entry like any other:
+
+```csharp
+[ErrorCatalog("Server")]
+public static partial class ApiErrors
+{
+    [Error(500, Title = "Server failed", Description = "An unexpected failure; retry later, or quote the traceId to support.")]
+    public static partial Error Failed { get; }
+}
+
+builder.Services.AddErrorApi(x => x.HandleExceptions(h => h.MapUnhandledException(ApiErrors.Failed)));
+```
+
+Two things are deliberate. The exception's message never becomes `detail` here, whatever
+`UseExceptionMessageAsDetail` says — an unknown exception is exactly the one nobody composed for a
+client. And the fallback is **documented**: it is reachable from every endpoint by definition, so the
+generator lists it on every operation and in the TypeScript contract, and `EAPI010` stays quiet about
+it. That only works when the argument is a catalog member the generator can see; a value built at
+runtime still answers, and `EAPI014` says it is documented nowhere.
+
+ASP.NET Core runs `IExceptionHandler`s in registration order. With a fallback set, ErrorApi answers
+everything that reaches it, so register any handler of your own before `AddErrorApi(...)`.
+`AddExceptionHandler(...)`, the previous name of the block, still compiles as an `[Obsolete]` alias
+for one release.
 
 ---
 

@@ -6,7 +6,8 @@ Everything about declaring entries - and everything you never have to type, beca
 
 `[Error(404)]` is enough. The wire code is resolved in this order:
 
-1. the explicit argument, `[Error("Orders.NotFound", 404)]`;
+1. the explicit code, `[Error("Orders.NotFound", 404)]` or, as a property, `[Error(404, Code = "Orders.NotFound")]` —
+   taken verbatim either way, so an explicit code never picks up the catalog prefix;
 2. a `code:` string literal in the member's own body — which is where ErrorOr and most factory-style
    error APIs already put it;
 3. the declaration's name, prefixed by its catalog.

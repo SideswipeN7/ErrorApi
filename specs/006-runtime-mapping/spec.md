@@ -25,13 +25,23 @@ problem shape — regardless of which result library (or none) the handler was w
   setup; every knob — composition, exception handler, document shaping, problem-type URI, adapter
   options — extends `AddErrorApi(x => ...)`. The first registration MUST win in DI and on the
   ambient static alike; `ErrorApiRuntime.Use` MUST scope the static restorably.
+- **FR-007** `MapUnhandledException(entry)` on the exception handler options MUST answer every
+  exception the catalog does not know with that entry, never carrying the exception message; without
+  it such exceptions MUST stay untouched. The parameterless form MUST answer with the built-in
+  `Server.Unhandled` (500) entry, whose constants are one linked source shared with the generator. The handler MUST register as one of many
+  (`TryAddEnumerable`), so an application''s own `IExceptionHandler` never hides it.
+- **FR-008** `HandleExceptions(h => ...)` MUST be the one block for the exception pipeline: the
+  catalog first, then the global handlers (`h.Add<THandler>()`, `h.Add<TException, THandler>()`,
+  `h.Add(lambda)`) in the order added — the first non-`None` answer wins — then the fallback. An
+  annotated exception's message MUST become `detail` by default, and MUST be switchable off.
+  `AddExceptionHandler` MUST survive one release as an `[Obsolete]` alias.
 
 ## Acceptance evidence
 
 `ResultMappingSurfaceTests`, `TypedResultSurfaceTests`, `ActionResultSurfaceTests`,
 `ResultFilterTests` + the Mediator sample''s live direct-return assertions, `ResultFlowTests`,
 adapter suites × the CI version matrix, `ExceptionHandlerOptionTests`, `OptionsLambdaTests`,
-`CompositionTests`, `RuntimeScopeTests`.
+`CompositionTests`, `RuntimeScopeTests`, `UnhandledExceptionTests`, `GlobalExceptionHandlerPipelineTests`.
 
 ## Out of scope
 

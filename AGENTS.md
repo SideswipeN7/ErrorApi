@@ -18,7 +18,7 @@ that introduces reflection on the request path, is going the wrong way.
 
 ```bash
 dotnet build ErrorApi.slnx                       # must be warning-free
-dotnet test ErrorApi.slnx                        # 307 tests across ten suites
+dotnet test ErrorApi.slnx                        # 329 tests across ten suites
 dotnet run -c Release --project benchmarks/ErrorApi.Benchmarks   # request-path cost, in-process (SAC-safe)
 dotnet test ErrorApi.slnx --collect:"XPlat Code Coverage"        # per-suite cobertura XML (coverlet)
 ERRORAPI_ACCEPT_SNAPSHOTS=1 dotnet test ErrorApi.slnx   # re-approve snapshots, then read the diff
@@ -143,6 +143,19 @@ The generator does **not** reference `ErrorApi.Abstractions`. It matches attribu
   needs no package, so `ErrorApiExceptionHandler` lives in `ErrorApi.AspNetCore`. It writes the response
   through `Error.ToProblem()`, the same call the result path makes, and that is not an accident: a client
   must not be able to tell which style an endpoint was written in.
+- **The exception pipeline beyond the catalog is a compile-time fact.** `x.HandleExceptions(h => ...)` is
+  the one block: catalog, then `h.Add(...)` global handlers in order, then `h.MapUnhandledException(...)`.
+  `ErrorApiGenerator.ResolveGlobalErrors` finds the block and every `MapUnhandledException` call through
+  their own syntax providers, walks each handler's `Map` (or the lambda) with the same walker the endpoints
+  use, resolves the fallback's argument as a catalog read, and appends everything to every endpoint's codes
+  before `EAPI010` runs — so the transformer, the TS writer and the diagnostics need no special case. These
+  calls sit inside the generated `AddErrorApi(x => ...)` overload, so they are **unbound while the generator
+  runs**; they are matched by name and shape, and only a call bound to some *other* type is skipped. A
+  fallback argument that is not a catalog read is `EAPI014`. The runtime reads the same `Error` back from
+  `ErrorApiExceptionOptions.UnhandledError` and never puts the exception message on the wire for it; the
+  parameterless form uses `src/Shared/UnhandledDefaults.cs`, linked into both the generator and the runtime,
+  so the built-in `Server.Unhandled` entry cannot drift. `AddExceptionHandler` is an `[Obsolete]` alias
+  until 2.0.
 - **All configuration extends the one AddErrorApi lambda.** New knobs go on `ErrorApiOptions` (or as
   an extension method on it defined in the adapter that owns the knob, like
   `IncludeAllFluentResultErrors`), never as a second registration call or a bare static the user must

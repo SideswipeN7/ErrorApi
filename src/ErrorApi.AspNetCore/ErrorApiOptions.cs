@@ -15,24 +15,37 @@ public sealed class ErrorApiOptions
 
     internal bool DescriptionsEnabled { get; private set; } = true;
 
-    internal bool ExceptionHandlerEnabled { get; private set; }
-
-    internal Action<ErrorApiExceptionOptions>? ExceptionHandlerConfigure { get; private set; }
+    internal ExceptionHandlingBuilder? Handling { get; private set; }
 
     /// <summary>
-    /// Registers the ErrorApi exception handler as part of this call — the lambda-form of
-    /// <c>AddErrorApiExceptionHandler()</c>, so one <c>AddErrorApi(x =&gt; ...)</c> line configures
-    /// everything. Explicit on purpose: taking over exception handling is opt-in, never a side effect.
-    /// The pipeline half is still yours: call <c>app.UseExceptionHandler();</c> (with
-    /// <c>AddProblemDetails()</c> registered) for the handler to run.
+    /// Registers the ErrorApi exception handler as part of this call and opens the block that says
+    /// what happens to a thrown exception, in order: the catalog answers first, then the handlers
+    /// added with <c>h.Add(...)</c>, then <c>h.MapUnhandledException(...)</c>. One
+    /// <c>AddErrorApi(x =&gt; ...)</c> line configures everything. Explicit on purpose: taking over
+    /// exception handling is opt-in, never a side effect. The pipeline half is still yours: call
+    /// <c>app.UseExceptionHandler();</c> (with <c>AddProblemDetails()</c> registered) for the handler
+    /// to run.
     /// </summary>
-    /// <param name="configure">Optional tuning of <see cref="ErrorApiExceptionOptions"/>.</param>
-    public ErrorApiOptions AddExceptionHandler(Action<ErrorApiExceptionOptions>? configure = null)
+    /// <example>
+    /// <code>
+    /// builder.Services.AddErrorApi(x => x.HandleExceptions(h => h
+    ///     .Add&lt;SqlException, SqlExceptionHandler&gt;()
+    ///     .MapUnhandledException()));
+    /// </code>
+    /// </example>
+    /// <param name="configure">The block; omit it to register the handler with the catalog alone.</param>
+    public ErrorApiOptions HandleExceptions(Action<ExceptionHandlingBuilder>? configure = null)
     {
-        ExceptionHandlerEnabled = true;
-        ExceptionHandlerConfigure = configure;
+        Handling ??= new ExceptionHandlingBuilder();
+        configure?.Invoke(Handling);
         return this;
     }
+
+    /// <summary>The previous name of <see cref="HandleExceptions"/>; forwards to it.</summary>
+    /// <param name="configure">Optional tuning of <see cref="ErrorApiExceptionOptions"/>.</param>
+    [Obsolete("Use HandleExceptions(h => ...): the same registration, with the handlers and the fallback in one ordered block. This alias goes away in 2.0.")]
+    public ErrorApiOptions AddExceptionHandler(Action<ErrorApiExceptionOptions>? configure = null) =>
+        HandleExceptions(configure is null ? null : h => h.Tune(configure));
 
     /// <summary>
     /// Fills <c>ProblemDetails.type</c> from this template, with <c>{0}</c> replaced by the error

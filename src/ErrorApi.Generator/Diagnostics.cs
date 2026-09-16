@@ -114,6 +114,15 @@ internal static class Diagnostics
         isEnabledByDefault: true,
         description: "The most specific declaration always wins, so the [ErrorStatusCode] value is the one documented and returned. Two disagreeing statuses on one entry usually means an edit updated one and missed the other — drop the [Error] argument, or the override.");
 
+    public static readonly DiagnosticDescriptor UnresolvedFallback = new(
+        id: "EAPI014",
+        title: "Unhandled-exception fallback is not a catalog entry",
+        messageFormat: "The argument of MapUnhandledException could not be resolved to an [Error] catalog entry, so the fallback answers at runtime but is documented on no endpoint; pass a catalog member such as ApiErrors.Failed",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "A fallback is reachable from every endpoint, so the generator lists it on every operation and in the TypeScript contract — but only when it can see which entry it is. A value built at runtime is invisible to it, and the document would promise less than the wire delivers.");
+
     public static readonly DiagnosticDescriptor UnresolvedHandler = new(
         id: "EAPI007",
         title: "Endpoint handler could not be resolved",
